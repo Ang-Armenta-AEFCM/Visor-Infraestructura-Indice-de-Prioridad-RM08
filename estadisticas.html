@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Estadísticas | Visor integral de infraestructura educativa</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260729-1">
 </head>
 <body class="stats-page">
   <main class="stats-container">
@@ -16,7 +16,7 @@
     <section class="stats-filter-panel">
       <h2>Filtros de consulta</h2>
       <div class="stats-filter-grid">
-        <div><label for="stTema">Información</label><select id="stTema"><option value="mantenimiento">Necesidades de mantenimiento</option><option value="fam_regular">FAM Regular 2025</option><option value="programa_123">1, 2, 3 por mi Escuela</option><option value="fam_potenciado">FAM Potenciado 2025</option><option value="fam_reforzamiento">FAM Reforzamiento estructural</option><option value="ambas">Ambas mejoras</option><option value="obs_fractura">Revisión por cercanía a fracturamiento</option><option value="obs_subsidencia">Seguimiento por subsidencia alta</option><option value="obs_combinada">Observación territorial combinada</option></select></div>
+        <div><label for="stTema">Información</label><select id="stTema"><option value="mantenimiento">Atención de Revisión Diagnóstico</option><option value="fam_regular">FAM Regular 2025</option><option value="programa_123">1, 2, 3 por mi Escuela</option><option value="fam_potenciado">FAM Potenciado 2025</option><option value="fam_reforzamiento">FAM Reforzamiento estructural</option><option value="ambas">Ambas mejoras</option><option value="obs_fractura">Revisión por cercanía a fracturamiento</option><option value="obs_subsidencia">Seguimiento por subsidencia alta</option><option value="obs_combinada">Observación territorial combinada</option></select></div>
         <div><label for="stAlcaldia">Alcaldía</label><select id="stAlcaldia"><option value="">Todas</option></select></div>
         <div><label for="stNivel">Nivel educativo</label><select id="stNivel"><option value="">Todos</option></select></div>
         
@@ -43,7 +43,6 @@
     <section class="table-panel"><h2>Resultados por alcaldía</h2><table><thead><tr><th>Alcaldía</th><th>Escuelas</th><th>Mayor número de necesidades</th><th>Con reforzamiento</th><th>Proporción</th></tr></thead><tbody id="tablaAlcaldia"></tbody></table></section>
     <section class="table-panel"><h2 id="rankingTitle">Escuelas de la selección</h2><table><thead><tr><th>#</th><th>Escuela</th><th>CCT</th><th>Alcaldía</th><th>Nivel</th><th>Necesidades</th><th>Información seleccionada</th></tr></thead><tbody id="tablaRanking"></tbody></table></section>
   </main>
-  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
-  <script src="estadisticas.js"></script>
+    <script src="estadisticas.js?v=20260729-1"></script>
 </body>
 </html>

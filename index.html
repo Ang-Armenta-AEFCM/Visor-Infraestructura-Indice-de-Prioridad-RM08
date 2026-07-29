@@ -7,16 +7,16 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
-  <link rel="stylesheet" href="style.css?v=20260715-2">
+  <link rel="stylesheet" href="style.css?v=20260729-1">
 </head>
 <body>
 <header class="topbar">
-  <div><h1>Visor integral de infraestructura educativa</h1><p>Mantenimiento, mejoras y observaciones territoriales en escuelas de la Ciudad de México</p></div>
+  <div class="brand-block"><span class="eyebrow">Sistema de información geográfica</span><h1>Visor integral de infraestructura educativa</h1><p>Consulta institucional de planteles, atención de revisión, programas de mejora y observaciones territoriales de la Ciudad de México.</p></div>
   <nav><a id="statsLink" href="estadisticas.html">Estadísticas generales</a></nav>
 </header>
 <main class="layout" id="layout">
   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-head"><strong>Panel de consulta</strong><button id="toggleSidebar" class="icon-button" title="Ocultar menú">‹</button></div>
+    <div class="sidebar-head"><div><span class="panel-kicker">Herramientas</span><strong>Panel de consulta</strong></div><button id="toggleSidebar" class="icon-button" title="Ocultar menú">‹</button></div>
 
     <section class="panel">
       <h2>Visualización</h2>
@@ -68,19 +68,6 @@
       </div>
     </section>
 
-    <section class="panel collapsible-panel">
-      <button id="toggleDownloads" class="collapse-title" aria-expanded="false"><span>Descargar bases de datos</span><span id="downloadsArrow">›</span></button>
-      <div id="downloadsBody" class="collapsible-body hidden download-list">
-        <a href="data/basededatosrm08cc.csv" download>Base de infraestructura educativa</a>
-        <a href="data/mantenimiento.csv" download>FAM Regular 2025 y 1, 2, 3 por mi Escuela</a>
-        <a href="data/fam_potenciado_2025.csv" download>FAM Potenciado 2025</a>
-        <a href="data/fam_potenciado_basico_2026.xlsx" download>FAM Potenciado + FAM Básico 2026</a>
-        <a href="data/reforzamiento.csv" download>FAM Reforzamiento estructural</a>
-        <a href="data/123_por_mi_escuela_2026.csv" download>1, 2, 3 por mi Escuela 2026</a>
-        <a href="data/beneficiadas_alcaldia_iztapalapa.csv" download>Escuelas beneficiadas por Alcaldía</a>
-      </div>
-    </section>
-
     <section class="panel compact">
       <h2 id="summaryTitle">Resumen visible</h2>
       <div class="kpis dynamic-kpis">
@@ -102,7 +89,6 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
-<script src="script.js?v=20260720-5"></script>
+<script src="script.js?v=20260729-1"></script>
 </body>
 </html>
