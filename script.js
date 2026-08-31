@@ -133,12 +133,15 @@ function bindEvents() {
     refreshDatalists();
     render(true);
   }));
-  ['filtroAlcaldia','filtroNivel','filtroPrioridad','buscarCCT','buscarNombre','rankMin','rankMax','toggleSchools']
+  ['filtroAlcaldia','filtroNivel','buscarCCT','buscarNombre','rankMin','rankMax','toggleSchools']
     .forEach(id => q(id).addEventListener(id.startsWith('buscar') || id.startsWith('rank') ? 'input' : 'change', () => render(false)));
+  q('priorityFilters').addEventListener('change', () => render(false));
   document.querySelectorAll('input[name="riskMode"]').forEach(input => input.addEventListener('change', () => render(false)));
   q('programFilters').addEventListener('change', () => render(false));
   q('selectAllProgramas').onclick = () => setChecks('#programFilters input', true);
   q('clearProgramas').onclick = () => setChecks('#programFilters input', false);
+  q('selectAllPrioridades').onclick = () => setChecks('#priorityFilters input', true);
+  q('clearPrioridades').onclick = () => setChecks('#priorityFilters input', false);
   q('clearRiesgos').onclick = () => {
     document.querySelectorAll('input[name="riskMode"]').forEach(input => input.checked = false);
     render(false);
@@ -197,6 +200,10 @@ function selectedPrograms() {
   return [...document.querySelectorAll('#programFilters input:checked')].map(input => input.value);
 }
 
+function selectedPriorities() {
+  return [...document.querySelectorAll('#priorityFilters input:checked')].map(input => input.value);
+}
+
 function selectedRisk() {
   return document.querySelector('input[name="riskMode"]:checked')?.value || '';
 }
@@ -206,7 +213,7 @@ function getState() {
     mode: activeMode(),
     alcaldia: q('filtroAlcaldia').value,
     nivel: q('filtroNivel').value,
-    prioridad: q('filtroPrioridad').value,
+    prioridades: selectedPriorities(),
     cct: q('buscarCCT').value,
     nombre: q('buscarNombre').value,
     rankMin: q('rankMin').value,
@@ -222,10 +229,12 @@ function restoreState() {
     if (!state) return;
     const mode = document.querySelector(`input[name="viewMode"][value="${state.mode}"]`);
     if (mode) mode.checked = true;
-    ['alcaldia','nivel','prioridad'].forEach(field => {
+    ['alcaldia','nivel'].forEach(field => {
       const target = q(`filtro${field.charAt(0).toUpperCase() + field.slice(1)}`);
       if (target && [...target.options].some(option => option.value === state[field])) target.value = state[field] || '';
     });
+    const restoredPriorities = state.prioridades || (state.prioridad ? [state.prioridad] : []);
+    document.querySelectorAll('#priorityFilters input').forEach(input => input.checked = restoredPriorities.includes(input.value));
     q('buscarCCT').value = state.cct || '';
     q('buscarNombre').value = state.nombre || '';
     q('rankMin').value = state.rankMin || '';
@@ -243,12 +252,13 @@ function render(fitResult) {
   const state = getState();
   try { localStorage.setItem('rm08_visor_state', JSON.stringify(state)); } catch (_) {}
   const programSet = new Set(state.programas);
+  const prioritySet = new Set(state.prioridades);
   const rankMin = state.rankMin === '' ? null : Number(state.rankMin);
   const rankMax = state.rankMax === '' ? null : Number(state.rankMax);
   currentItems = activeItems().filter(item => {
     if (state.alcaldia && item.alcaldia !== state.alcaldia) return false;
     if (state.nivel && !item.niveles.includes(state.nivel)) return false;
-    if (state.prioridad && item.prioridad_rm08 !== state.prioridad) return false;
+    if (prioritySet.size && !prioritySet.has(item.prioridad_rm08)) return false;
     if (state.cct && !clean(item.ccts.join(' ')).includes(clean(state.cct))) return false;
     if (state.nombre && !clean(item.nombres.join(' ')).includes(clean(state.nombre))) return false;
     if (rankMin !== null && (item.prioridad_123_2026 === null || item.prioridad_123_2026 < rankMin)) return false;
@@ -294,7 +304,7 @@ function updateSummary(state) {
   q('kpi3').textContent = formatNumber(currentItems.filter(item => item.programas.length).length);
   q('kpi4').textContent = formatNumber(currentItems.filter(item => item.observacion_territorial !== 'Sin observación').length);
   const parts = [];
-  if (state.prioridad) parts.push(`RM08 ${state.prioridad.toLowerCase()}`);
+  if (state.prioridades.length) parts.push(`RM08: ${state.prioridades.map(value => value.toLowerCase()).join(', ')}`);
   if (state.programas.length) parts.push(`${state.programas.length} programa(s)`);
   if (state.risk) parts.push('observación territorial');
   if (state.rankMin || state.rankMax) parts.push(`clasificación 1,2,3: ${state.rankMin || 1}–${state.rankMax || 464}`);
@@ -310,8 +320,8 @@ function fitCurrentResult() {
 }
 
 function clearFilters() {
-  ['filtroAlcaldia','filtroNivel','filtroPrioridad','buscarCCT','buscarNombre','rankMin','rankMax'].forEach(id => q(id).value = '');
-  document.querySelectorAll('#programFilters input, input[name="riskMode"]').forEach(input => input.checked = false);
+  ['filtroAlcaldia','filtroNivel','buscarCCT','buscarNombre','rankMin','rankMax'].forEach(id => q(id).value = '');
+  document.querySelectorAll('#priorityFilters input, #programFilters input, input[name="riskMode"]').forEach(input => input.checked = false);
   hasFitResult = false;
   render(true);
 }

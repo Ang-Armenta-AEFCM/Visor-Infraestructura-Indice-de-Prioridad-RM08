@@ -46,13 +46,16 @@ function buildFilters() {
 }
 
 function bindEvents() {
-  ['stViewMode','stAlcaldia','stNivel','stPrioridad','stCCT','stNombre','stRankMin','stRankMax'].forEach(id => {
-    q(id).addEventListener(id === 'stViewMode' || id.startsWith('stA') || id === 'stNivel' || id === 'stPrioridad' ? 'change' : 'input', render);
+  ['stViewMode','stAlcaldia','stNivel','stCCT','stNombre','stRankMin','stRankMax'].forEach(id => {
+    q(id).addEventListener(id === 'stViewMode' || id.startsWith('stA') || id === 'stNivel' ? 'change' : 'input', render);
   });
+  q('stPriorityFilters').addEventListener('change', render);
   q('stPrograms').addEventListener('change', render);
   document.querySelectorAll('input[name="stRisk"]').forEach(input => input.addEventListener('change', render));
   q('stAllPrograms').onclick = () => setPrograms(true);
   q('stClearPrograms').onclick = () => setPrograms(false);
+  q('stAllPriorities').onclick = () => setPriorities(true);
+  q('stClearPriorities').onclick = () => setPriorities(false);
   q('stClearRisk').onclick = () => {
     document.querySelectorAll('input[name="stRisk"]').forEach(input => input.checked = false);
     render();
@@ -65,12 +68,17 @@ function setPrograms(checked) {
   render();
 }
 
+function setPriorities(checked) {
+  document.querySelectorAll('#stPriorityFilters input').forEach(input => input.checked = checked);
+  render();
+}
+
 function getState() {
   return {
     mode:q('stViewMode').value,
     alcaldia:q('stAlcaldia').value,
     nivel:q('stNivel').value,
-    prioridad:q('stPrioridad').value,
+    prioridades:[...document.querySelectorAll('#stPriorityFilters input:checked')].map(input => input.value),
     cct:q('stCCT').value,
     nombre:q('stNombre').value,
     rankMin:q('stRankMin').value,
@@ -85,10 +93,12 @@ function restoreState() {
     const state = JSON.parse(localStorage.getItem('rm08_visor_state') || 'null');
     if (!state) return;
     q('stViewMode').value = state.mode || 'inmueble';
-    ['alcaldia','nivel','prioridad'].forEach(field => {
+    ['alcaldia','nivel'].forEach(field => {
       const id = `st${field.charAt(0).toUpperCase() + field.slice(1)}`;
       if ([...q(id).options].some(option => option.value === state[field])) q(id).value = state[field] || '';
     });
+    const restoredPriorities = state.prioridades || (state.prioridad ? [state.prioridad] : []);
+    document.querySelectorAll('#stPriorityFilters input').forEach(input => input.checked = restoredPriorities.includes(input.value));
     q('stCCT').value = state.cct || '';
     q('stNombre').value = state.nombre || '';
     q('stRankMin').value = state.rankMin || '';
@@ -104,13 +114,14 @@ function render() {
   const state = getState();
   try { localStorage.setItem('rm08_visor_state', JSON.stringify(state)); } catch (_) {}
   const programSet = new Set(state.programas);
+  const prioritySet = new Set(state.prioridades);
   const rankMin = state.rankMin === '' ? null : Number(state.rankMin);
   const rankMax = state.rankMax === '' ? null : Number(state.rankMax);
   const source = state.mode === 'cct' ? dataset.ccts : dataset.inmuebles;
   filtered = source.filter(item => {
     if (state.alcaldia && item.alcaldia !== state.alcaldia) return false;
     if (state.nivel && !item.niveles.includes(state.nivel)) return false;
-    if (state.prioridad && item.prioridad_rm08 !== state.prioridad) return false;
+    if (prioritySet.size && !prioritySet.has(item.prioridad_rm08)) return false;
     if (state.cct && !clean(item.ccts.join(' ')).includes(clean(state.cct))) return false;
     if (state.nombre && !clean(item.nombres.join(' ')).includes(clean(state.nombre))) return false;
     if (rankMin !== null && (item.prioridad_123_2026 === null || item.prioridad_123_2026 < rankMin)) return false;
@@ -135,7 +146,7 @@ function updateContext(state) {
   const tags = [];
   if (state.alcaldia) tags.push(state.alcaldia);
   if (state.nivel) tags.push(state.nivel);
-  if (state.prioridad) tags.push(`RM08 ${state.prioridad}`);
+  if (state.prioridades.length) tags.push(`RM08: ${state.prioridades.join(', ')}`);
   if (state.cct) tags.push(`CCT: ${state.cct}`);
   if (state.nombre) tags.push(`Escuela: ${state.nombre}`);
   if (state.rankMin || state.rankMax) tags.push(`Clasificación ${state.rankMin || 1}–${state.rankMax || 464}`);
@@ -224,8 +235,8 @@ function emptyRow(cols) {
 }
 
 function clearFilters() {
-  ['stAlcaldia','stNivel','stPrioridad','stCCT','stNombre','stRankMin','stRankMax'].forEach(id => q(id).value = '');
+  ['stAlcaldia','stNivel','stCCT','stNombre','stRankMin','stRankMax'].forEach(id => q(id).value = '');
   q('stViewMode').value = 'inmueble';
-  document.querySelectorAll('#stPrograms input, input[name="stRisk"]').forEach(input => input.checked = false);
+  document.querySelectorAll('#stPriorityFilters input, #stPrograms input, input[name="stRisk"]').forEach(input => input.checked = false);
   render();
 }

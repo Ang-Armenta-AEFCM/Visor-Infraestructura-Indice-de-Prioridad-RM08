@@ -37,7 +37,15 @@
       <h2>Filtros generales</h2>
       <label for="filtroAlcaldia">Alcaldía</label><select id="filtroAlcaldia"><option value="">Todas</option></select>
       <label for="filtroNivel">Nivel educativo</label><select id="filtroNivel"><option value="">Todos</option></select>
-      <label for="filtroPrioridad">Prioridad de atención RM08</label><select id="filtroPrioridad"><option value="">Todas</option><option value="ALTA">Alta · índice 3</option><option value="MEDIA">Media · índice 2</option><option value="BAJA">Baja · índice 1</option></select>
+      <fieldset class="priority-fieldset">
+        <legend>Niveles del índice de prioridad RM08</legend>
+        <div class="section-actions"><button type="button" id="selectAllPrioridades" class="compact-action">Seleccionar todos</button><button type="button" id="clearPrioridades" class="compact-action secondary-action">Quitar todos</button></div>
+        <div id="priorityFilters" class="priority-filter-grid">
+          <label><input type="checkbox" value="ALTA"><span><i class="priority-dot dot-alta"></i>Alta · índice 3</span></label>
+          <label><input type="checkbox" value="MEDIA"><span><i class="priority-dot dot-media"></i>Media · índice 2</span></label>
+          <label><input type="checkbox" value="BAJA"><span><i class="priority-dot dot-baja"></i>Baja · índice 1</span></label>
+        </div>
+      </fieldset>
       <label for="buscarCCT">Buscar por CCT</label><input id="buscarCCT" list="listaCCT" type="search" placeholder="Escribe o selecciona CCT"><datalist id="listaCCT"></datalist>
       <label for="buscarNombre">Buscar por escuela</label><input id="buscarNombre" list="listaNombres" type="search" placeholder="Nombre del plantel"><datalist id="listaNombres"></datalist>
       <fieldset class="rank-fieldset"><legend>Clasificación 1, 2, 3 2026 · Prioridad 464</legend><div class="rank-range"><div><label for="rankMin">Desde</label><input id="rankMin" type="number" min="1" max="464" placeholder="1"></div><div><label for="rankMax">Hasta</label><input id="rankMax" type="number" min="1" max="464" placeholder="464"></div></div><p>Los números son posiciones de clasificación, no cantidades.</p></fieldset>
