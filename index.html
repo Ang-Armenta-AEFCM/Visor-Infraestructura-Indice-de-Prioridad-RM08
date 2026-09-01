@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Visor de prioridad de atención RM08</title>
+  <title>Visor del Índice de Prioridad de Atención</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="style.css?v=20260831-rm08">
+  <link rel="stylesheet" href="style.css?v=20260901-ipa">
 </head>
 <body>
 <header class="topbar">
   <div class="brand-block">
     <span class="eyebrow">Infraestructura educativa · Ciudad de México</span>
-    <h1>Visor de prioridad de atención RM08</h1>
-    <p>Consulta la base general, los programas vinculados y las observaciones territoriales de cada plantel.</p>
+    <h1>Visor del Índice de Prioridad de Atención</h1>
+    <p>Consulta la prioridad final, el mantenimiento pendiente, los apoyos previos, los programas y las observaciones territoriales de cada plantel.</p>
   </div>
   <nav class="top-actions">
     <button id="fullscreenButton" class="header-button" type="button" title="Ver el visor en pantalla completa" aria-pressed="false">Pantalla completa</button>
@@ -38,12 +38,14 @@
       <label for="filtroAlcaldia">Alcaldía</label><select id="filtroAlcaldia"><option value="">Todas</option></select>
       <label for="filtroNivel">Nivel educativo</label><select id="filtroNivel"><option value="">Todos</option></select>
       <fieldset class="priority-fieldset">
-        <legend>Niveles del índice de prioridad RM08</legend>
+        <legend>Niveles del Índice de Prioridad de Atención</legend>
         <div class="section-actions"><button type="button" id="selectAllPrioridades" class="compact-action">Seleccionar todos</button><button type="button" id="clearPrioridades" class="compact-action secondary-action">Quitar todos</button></div>
         <div id="priorityFilters" class="priority-filter-grid">
-          <label><input type="checkbox" value="ALTA"><span><i class="priority-dot dot-alta"></i>Alta · índice 3</span></label>
-          <label><input type="checkbox" value="MEDIA"><span><i class="priority-dot dot-media"></i>Media · índice 2</span></label>
-          <label><input type="checkbox" value="BAJA"><span><i class="priority-dot dot-baja"></i>Baja · índice 1</span></label>
+          <label><input type="checkbox" value="Muy alta"><span><i class="priority-dot dot-muy-alta"></i>Muy alta · &gt;80–100</span></label>
+          <label><input type="checkbox" value="Alta"><span><i class="priority-dot dot-alta"></i>Alta · &gt;60–80</span></label>
+          <label><input type="checkbox" value="Media"><span><i class="priority-dot dot-media"></i>Media · &gt;40–60</span></label>
+          <label><input type="checkbox" value="Baja"><span><i class="priority-dot dot-baja"></i>Baja · &gt;20–40</span></label>
+          <label><input type="checkbox" value="Muy baja"><span><i class="priority-dot dot-muy-baja"></i>Muy baja · 0–20</span></label>
         </div>
       </fieldset>
       <label for="buscarCCT">Buscar por CCT</label><input id="buscarCCT" list="listaCCT" type="search" placeholder="Escribe o selecciona CCT"><datalist id="listaCCT"></datalist>
@@ -58,6 +60,15 @@
         <p class="hint">Selecciona uno o más programas. Dentro del apartado se incluyen planteles que pertenezcan a cualquiera de los programas elegidos; los demás filtros se cruzan con esta selección.</p>
         <div class="section-actions"><button type="button" id="selectAllProgramas" class="compact-action">Seleccionar todos</button><button type="button" id="clearProgramas" class="compact-action secondary-action">Quitar todos</button></div>
         <div id="programFilters" class="theme-checklist"></div>
+      </div>
+    </section>
+
+    <section class="panel collapsible-panel">
+      <button id="toggleMantenimiento" class="collapse-title" aria-expanded="false"><span>Mantenimiento</span><span id="mantenimientoArrow">›</span></button>
+      <div id="mantenimientoBody" class="collapsible-body hidden">
+        <p class="hint">Selecciona una o varias necesidades. Se mostrarán únicamente las escuelas que tengan pendiente al menos una de las opciones marcadas; este filtro se cruza con programas, prioridad y territorio.</p>
+        <div class="section-actions"><button type="button" id="selectAllMantenimiento" class="compact-action">Seleccionar todas</button><button type="button" id="clearMantenimiento" class="compact-action secondary-action">Quitar todas</button></div>
+        <div id="maintenanceFilters" class="theme-checklist maintenance-checklist"></div>
       </div>
     </section>
 
@@ -86,9 +97,11 @@
       <p id="activeCrossSummary" class="cross-summary">Sin cruces temáticos activos.</p>
       <div class="kpis dynamic-kpis">
         <div><strong id="kpi1">0</strong><span id="kpiLabel1">Inmuebles</span></div>
-        <div><strong id="kpi2">0</strong><span>Prioridad alta</span></div>
+        <div><strong id="kpi2">0</strong><span>Prioridad alta o muy alta</span></div>
         <div><strong id="kpi3">0</strong><span>Con programa</span></div>
         <div><strong id="kpi4">0</strong><span>Con observación</span></div>
+        <div><strong id="kpi5">0</strong><span>Con apoyo previo</span></div>
+        <div><strong id="kpi6">0</strong><span>Con mantenimiento pendiente</span></div>
       </div>
       <p id="coverageNote" class="coverage-note"></p>
     </section>
@@ -98,13 +111,13 @@
   <section class="maparea">
     <div id="map"></div>
     <div id="mapStatus" class="map-status">Cargando información del visor…</div>
-    <div id="legend" class="legend"><div class="legend-head"><strong>Índice de prioridad RM08</strong><button id="toggleLegend" type="button">−</button></div><div id="legendBody"><div><span class="swatch c-alta"></span>Alta · índice 3</div><div><span class="swatch c-media"></span>Media · índice 2</div><div><span class="swatch c-baja"></span>Baja · índice 1</div><div><span class="swatch c-sin-dato"></span>Sin clasificación</div></div></div>
+    <div id="legend" class="legend"><div class="legend-head"><strong>Índice de Prioridad de Atención</strong><button id="toggleLegend" type="button">−</button></div><div id="legendBody"><div><span class="swatch c-muy-alta"></span>Muy alta</div><div><span class="swatch c-alta"></span>Alta</div><div><span class="swatch c-media"></span>Media</div><div><span class="swatch c-baja"></span>Baja</div><div><span class="swatch c-muy-baja"></span>Muy baja</div><div><span class="swatch c-sin-dato"></span>Sin información</div></div></div>
     <div id="subsidenciaLegend" class="legend extra-legend hidden"><div class="legend-head"><strong>Subsidencia acumulada</strong><button id="toggleSubLegend" type="button">−</button></div><div id="subLegendBody"><div><span class="swatch square s-muy-bajo"></span>Muy baja</div><div><span class="swatch square s-bajo"></span>Baja</div><div><span class="swatch square s-medio"></span>Media</div><div><span class="swatch square s-alto"></span>Alta</div><div><span class="swatch square s-muy-alto"></span>Muy alta</div></div></div>
     <aside id="detailPanel" class="detail-panel"><button id="closeDetail" class="close" type="button">×</button><h2 id="detailTitle">Seleccione un plantel</h2><div id="detailContent" class="detail-content"><p>Haga clic en un punto del mapa para consultar toda la información.</p></div></aside>
   </section>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="script.js?v=20260831-rm08"></script>
+<script src="script.js?v=20260901-ipa2"></script>
 </body>
 </html>

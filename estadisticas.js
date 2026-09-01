@@ -8,16 +8,16 @@ const pct = (value, total) => total ? `${(value * 100 / total).toFixed(1)}%` : '
 
 let dataset;
 let programMap = new Map();
+let maintenanceMap = new Map();
 let filtered = [];
 
 init();
 
 async function init() {
   try {
-    const response = await fetch('data/rm08_infraestructura.json');
-    if (!response.ok) throw new Error(`Error ${response.status}`);
-    dataset = await response.json();
+    dataset = await loadMainData();
     programMap = new Map(dataset.programas.map(program => [program.id, program]));
+    maintenanceMap = new Map(dataset.mantenimiento_variables.map(variable => [variable.id, variable]));
     buildFilters();
     bindEvents();
     restoreState();
@@ -26,6 +26,23 @@ async function init() {
     console.error(error);
     q('statsContext').textContent = 'No fue posible cargar la información.';
   }
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Error ${response.status} al cargar ${url}`);
+  return response.json();
+}
+
+async function loadMainData() {
+  const manifest = await fetchJson('data/rm08_infraestructura.json');
+  if (!Array.isArray(manifest.partes_datos) || !manifest.partes_datos.length) return manifest;
+  const parts = await Promise.all(manifest.partes_datos.map(file => fetchJson(`data/${file}`)));
+  return {
+    ...manifest,
+    inmuebles: parts.flatMap(part => part.inmuebles || []),
+    ccts: parts.flatMap(part => part.ccts || [])
+  };
 }
 
 function unique(values) {
@@ -43,6 +60,9 @@ function buildFilters() {
   q('stPrograms').innerHTML = dataset.programas.map(program =>
     `<label><input type="checkbox" value="${escapeHtml(program.id)}"><span><i class="program-dot" style="--program-color:${escapeHtml(program.color)}"></i>${escapeHtml(program.label)}</span></label>`
   ).join('');
+  q('stMaintenance').innerHTML = dataset.mantenimiento_variables.map(variable =>
+    `<label title="${escapeHtml(variable.nombre_completo)}"><input type="checkbox" value="${escapeHtml(variable.id)}"><span>${escapeHtml(variable.nombre)} <small>· ${variable.peso} pts</small></span></label>`
+  ).join('');
 }
 
 function bindEvents() {
@@ -51,9 +71,12 @@ function bindEvents() {
   });
   q('stPriorityFilters').addEventListener('change', render);
   q('stPrograms').addEventListener('change', render);
+  q('stMaintenance').addEventListener('change', render);
   document.querySelectorAll('input[name="stRisk"]').forEach(input => input.addEventListener('change', render));
   q('stAllPrograms').onclick = () => setPrograms(true);
   q('stClearPrograms').onclick = () => setPrograms(false);
+  q('stAllMaintenance').onclick = () => setMaintenance(true);
+  q('stClearMaintenance').onclick = () => setMaintenance(false);
   q('stAllPriorities').onclick = () => setPriorities(true);
   q('stClearPriorities').onclick = () => setPriorities(false);
   q('stClearRisk').onclick = () => {
@@ -73,6 +96,11 @@ function setPriorities(checked) {
   render();
 }
 
+function setMaintenance(checked) {
+  document.querySelectorAll('#stMaintenance input').forEach(input => input.checked = checked);
+  render();
+}
+
 function getState() {
   return {
     mode:q('stViewMode').value,
@@ -84,6 +112,7 @@ function getState() {
     rankMin:q('stRankMin').value,
     rankMax:q('stRankMax').value,
     programas:[...document.querySelectorAll('#stPrograms input:checked')].map(input => input.value),
+    mantenimiento:[...document.querySelectorAll('#stMaintenance input:checked')].map(input => input.value),
     risk:document.querySelector('input[name="stRisk"]:checked')?.value || ''
   };
 }
@@ -104,6 +133,7 @@ function restoreState() {
     q('stRankMin').value = state.rankMin || '';
     q('stRankMax').value = state.rankMax || '';
     document.querySelectorAll('#stPrograms input').forEach(input => input.checked = (state.programas || []).includes(input.value));
+    document.querySelectorAll('#stMaintenance input').forEach(input => input.checked = (state.mantenimiento || []).includes(input.value));
     const risk = document.querySelector(`input[name="stRisk"][value="${state.risk}"]`);
     if (risk) risk.checked = true;
   } catch (_) {}
@@ -114,6 +144,7 @@ function render() {
   const state = getState();
   try { localStorage.setItem('rm08_visor_state', JSON.stringify(state)); } catch (_) {}
   const programSet = new Set(state.programas);
+  const maintenanceSet = new Set(state.mantenimiento);
   const prioritySet = new Set(state.prioridades);
   const rankMin = state.rankMin === '' ? null : Number(state.rankMin);
   const rankMax = state.rankMax === '' ? null : Number(state.rankMax);
@@ -121,12 +152,13 @@ function render() {
   filtered = source.filter(item => {
     if (state.alcaldia && item.alcaldia !== state.alcaldia) return false;
     if (state.nivel && !item.niveles.includes(state.nivel)) return false;
-    if (prioritySet.size && !prioritySet.has(item.prioridad_rm08)) return false;
+    if (prioritySet.size && !prioritySet.has(item.clase_prioridad_final)) return false;
     if (state.cct && !clean(item.ccts.join(' ')).includes(clean(state.cct))) return false;
     if (state.nombre && !clean(item.nombres.join(' ')).includes(clean(state.nombre))) return false;
     if (rankMin !== null && (item.prioridad_123_2026 === null || item.prioridad_123_2026 < rankMin)) return false;
     if (rankMax !== null && (item.prioridad_123_2026 === null || item.prioridad_123_2026 > rankMax)) return false;
     if (programSet.size && !item.programas.some(program => programSet.has(program))) return false;
+    if (maintenanceSet.size && !item.mantenimiento_pendientes.some(variable => maintenanceSet.has(variable))) return false;
     if (state.risk === 'obs_fractura' && !item.cercano_fracturamiento_250m) return false;
     if (state.risk === 'obs_subsidencia' && !item.subsidencia_alta) return false;
     if (state.risk === 'obs_combinada' && !(item.cercano_fracturamiento_250m && item.subsidencia_alta)) return false;
@@ -137,6 +169,7 @@ function render() {
   updatePriorityTable();
   updateLevelTable();
   updateProgramTable();
+  updateMaintenanceTable();
   updateRiskTable();
   updateAlcaldiaTable();
   updateRanking(state);
@@ -146,11 +179,12 @@ function updateContext(state) {
   const tags = [];
   if (state.alcaldia) tags.push(state.alcaldia);
   if (state.nivel) tags.push(state.nivel);
-  if (state.prioridades.length) tags.push(`RM08: ${state.prioridades.join(', ')}`);
+  if (state.prioridades.length) tags.push(`IPA: ${state.prioridades.join(', ')}`);
   if (state.cct) tags.push(`CCT: ${state.cct}`);
   if (state.nombre) tags.push(`Escuela: ${state.nombre}`);
   if (state.rankMin || state.rankMax) tags.push(`Clasificación ${state.rankMin || 1}–${state.rankMax || 464}`);
   if (state.programas.length) tags.push(`${state.programas.length} programa(s)`);
+  if (state.mantenimiento.length) tags.push(`${state.mantenimiento.length} necesidad(es) de mantenimiento`);
   if (state.risk) tags.push('Observación territorial');
   q('statsContext').textContent = tags.length ? `Se aplican ${tags.length} criterio(s) de manera simultánea.` : 'Sin filtros: se muestra la base completa.';
   q('statsTags').innerHTML = tags.map(tag => `<span class="mini-tag blue">${escapeHtml(tag)}</span>`).join('');
@@ -161,24 +195,33 @@ function updateCards(state) {
   q('stTotalLabel').textContent = `${unit} del resultado`;
   q('stTotal').textContent = fmt(filtered.length);
   q('stMapped').textContent = fmt(filtered.filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lon)).length);
-  q('stHigh').textContent = fmt(filtered.filter(item => item.prioridad_rm08 === 'ALTA').length);
+  q('stHigh').textContent = fmt(filtered.filter(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)).length);
   q('stTerritorial').textContent = fmt(filtered.filter(item => item.observacion_territorial !== 'Sin observación').length);
-  ['stDistributionUnit','stLevelUnit','stProgramUnit','stRiskUnit','stAlcaldiaUnit'].forEach(id => q(id).textContent = unit);
+  q('stSupport').textContent = fmt(filtered.filter(item => item.tuvo_apoyo_previo).length);
+  q('stMaintenancePending').textContent = fmt(filtered.filter(item => item.mantenimiento_pendientes.length).length);
+  ['stDistributionUnit','stLevelUnit','stProgramUnit','stRiskUnit','stMaintenanceUnit','stAlcaldiaUnit'].forEach(id => q(id).textContent = unit);
 }
 
 function updatePriorityTable() {
-  const labels = ['ALTA','MEDIA','BAJA',''];
+  const labels = ['Muy alta','Alta','Media','Baja','Muy baja','Sin información'];
   q('tablaDistribucion').innerHTML = labels.map(label => {
-    const count = filtered.filter(item => item.prioridad_rm08 === label).length;
-    return `<tr><td>${escapeHtml(label || 'Sin clasificación')}</td><td>${fmt(count)}</td><td>${barCell(count, filtered.length)}</td></tr>`;
+    const count = filtered.filter(item => item.clase_prioridad_final === label).length;
+    return `<tr><td>${escapeHtml(label)}</td><td>${fmt(count)}</td><td>${barCell(count, filtered.length)}</td></tr>`;
   }).join('');
 }
 
 function updateLevelTable() {
   const rows = groupBy(filtered, item => item.nivel || 'Sin nivel').map(([label, items]) => ({
-    label, count:items.length, high:items.filter(item => item.prioridad_rm08 === 'ALTA').length
+    label, count:items.length, high:items.filter(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)).length
   })).sort((a,b) => b.count - a.count);
   q('tablaNivel').innerHTML = rows.length ? rows.map(row => `<tr><td>${escapeHtml(row.label)}</td><td>${fmt(row.count)}</td><td>${fmt(row.high)}</td></tr>`).join('') : emptyRow(3);
+}
+
+function updateMaintenanceTable() {
+  q('tablaMantenimiento').innerHTML = dataset.mantenimiento_variables.map(variable => {
+    const count = filtered.filter(item => item.mantenimiento_pendientes.includes(variable.id)).length;
+    return `<tr><td title="${escapeHtml(variable.nombre_completo)}">${escapeHtml(variable.nombre)}</td><td>${fmt(count)}</td><td>${barCell(count, filtered.length)}</td></tr>`;
+  }).join('');
 }
 
 function updateProgramTable() {
@@ -199,20 +242,21 @@ function updateRiskTable() {
 function updateAlcaldiaTable() {
   const rows = groupBy(filtered, item => item.alcaldia || 'Sin alcaldía').map(([label, items]) => ({
     label, count:items.length,
-    high:items.filter(item => item.prioridad_rm08 === 'ALTA').length,
-    program:items.filter(item => item.programas.length).length
+    high:items.filter(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)).length,
+    program:items.filter(item => item.programas.length).length,
+    support:items.filter(item => item.tuvo_apoyo_previo).length
   })).sort((a,b) => b.count - a.count);
-  q('tablaAlcaldia').innerHTML = rows.length ? rows.map(row => `<tr><td>${escapeHtml(row.label)}</td><td>${fmt(row.count)}</td><td>${fmt(row.high)}</td><td>${fmt(row.program)}</td><td>${barCell(row.count, filtered.length)}</td></tr>`).join('') : emptyRow(5);
+  q('tablaAlcaldia').innerHTML = rows.length ? rows.map(row => `<tr><td>${escapeHtml(row.label)}</td><td>${fmt(row.count)}</td><td>${fmt(row.high)}</td><td>${fmt(row.program)}</td><td>${fmt(row.support)}</td><td>${barCell(row.count, filtered.length)}</td></tr>`).join('') : emptyRow(6);
 }
 
 function updateRanking(state) {
   const rows = [...filtered].sort((a,b) =>
-    (b.indice_rm08 || 0) - (a.indice_rm08 || 0) ||
+    (b.indice_prioridad_final ?? -1) - (a.indice_prioridad_final ?? -1) ||
     (a.prioridad_123_2026 ?? 9999) - (b.prioridad_123_2026 ?? 9999) ||
     a.nombre.localeCompare(b.nombre, 'es')
   ).slice(0, 500);
   q('stRankingTitle').textContent = `${state.mode === 'cct' ? 'CCT' : 'Inmuebles'} del resultado`;
-  q('tablaRanking').innerHTML = rows.length ? rows.map((item,index) => `<tr><td>${index + 1}</td><td>${escapeHtml(item.nombre)}</td><td>${escapeHtml(item.ccts.join(', ') || '—')}</td><td>${escapeHtml(item.alcaldia || '—')}</td><td>${escapeHtml(item.niveles.join(', ') || '—')}</td><td><span class="priority-pill p-${clean(item.prioridad_rm08).toLowerCase()}">${escapeHtml(item.prioridad_rm08 || '—')} · ${item.indice_rm08 ?? '—'}</span></td><td>${item.prioridad_123_2026 ?? '—'}</td><td>${escapeHtml(item.programas.map(id => programMap.get(id)?.label || id).join('; ') || '—')}</td><td>${escapeHtml(item.observacion_territorial)}</td></tr>`).join('') : emptyRow(9);
+  q('tablaRanking').innerHTML = rows.length ? rows.map((item,index) => `<tr><td>${index + 1}</td><td>${escapeHtml(item.nombre)}</td><td>${escapeHtml(item.ccts.join(', ') || '—')}</td><td>${escapeHtml(item.alcaldia || '—')}</td><td>${escapeHtml(item.niveles.join(', ') || '—')}</td><td><span class="priority-pill p-${clean(item.clase_prioridad_final).toLowerCase().replace(/\s+/g, '-')}">${escapeHtml(item.clase_prioridad_final)} · ${item.indice_prioridad_final ?? '—'}</span></td><td>${item.indice_mantenimiento === null ? 'Sin información' : `${item.indice_mantenimiento} · ${escapeHtml(item.clase_mantenimiento)}`}</td><td>${item.tuvo_apoyo_previo ? 'Sí' : 'No'}</td><td>${escapeHtml(item.mejoras_previas.join('; ') || '—')}</td><td>${item.prioridad_123_2026 ?? '—'}</td><td>${escapeHtml(item.programas.map(id => programMap.get(id)?.label || id).join('; ') || '—')}</td><td>${escapeHtml(item.observacion_territorial)}</td></tr>`).join('') : emptyRow(12);
 }
 
 function groupBy(items, getter) {
@@ -237,6 +281,6 @@ function emptyRow(cols) {
 function clearFilters() {
   ['stAlcaldia','stNivel','stCCT','stNombre','stRankMin','stRankMax'].forEach(id => q(id).value = '');
   q('stViewMode').value = 'inmueble';
-  document.querySelectorAll('#stPriorityFilters input, #stPrograms input, input[name="stRisk"]').forEach(input => input.checked = false);
+  document.querySelectorAll('#stPriorityFilters input, #stPrograms input, #stMaintenance input, input[name="stRisk"]').forEach(input => input.checked = false);
   render();
 }
