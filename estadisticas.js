@@ -1,309 +1,286 @@
-const PATHS = {
-  schools: 'data/infraestructura_educativa_2026.json',
-  programs: 'data/programas_integradores.json',
-  improvements: 'data/mejoras_infraestructura.json'
-};
-const CCT_FIELDS = ['cct1', 'cct2', 'cct3', 'cct4'];
-const IMPROVEMENT_LABELS = {
-  ilife_obra_2025_101: '101 ILIFE Obra 2025',
-  dgcop_obra_2025_232: '232 DGCOP Obra 2025',
-  ilife_obra_2025_en_2026_134: '134 ILIFE Obra 2025 en 2026',
-  ilife_2026_180: '180 ILIFE 2026',
-  sobse_2026_133: '133 SOBSE 2026',
-  faltantes_151: '151 escuelas faltantes de mantenimiento'
-};
-const PROGRAM_TEXT_CORRECTIONS = {
-  'DoReMiFaSol': 'DO RE MI FA SOL POR MI ESCUELA',
-  'Do Re Mi Fa Sol': 'DO RE MI FA SOL POR MI ESCUELA',
-  'Estrategia de prevencion del consumo de sustancias en secundarias de Iztapalapa': 'Estrategia de prevención del consumo de sustancias en secundarias de Iztapalapa',
-  'Juego diáctico de Adonde voy, la escuela va conmigo': 'Juego didáctico de Adónde voy, la escuela va conmigo',
-  'Programa Nacional de Ingles': 'Programa Nacional de Inglés',
-  'Beca Comision': 'Beca Comisión',
-  'Atiendo a la diversidad:entendiendo la discapacidad invisible': 'Atiendo a la diversidad: entendiendo la discapacidad invisible',
-  'Comunidades de Aprendizaje en la Primera Infancia: Una mirada desde las estrructuras cerebrales y la cognición': 'Comunidades de Aprendizaje en la Primera Infancia: una mirada desde las estructuras cerebrales y la cognición',
-  'Cuidado del medio ambiente y energia sostenible': 'Cuidado del medio ambiente y energía sostenible',
-  'Docencia Creativa: Recursos Artisticos para Repensar tu Práctica': 'Docencia creativa: recursos artísticos para repensar tu práctica',
-  'Hacia una pedagogia digital de la práctica docente': 'Hacia una pedagogía digital de la práctica docente',
-  'Innovaciones en seguridad y gestion de riesgos': 'Innovaciones en seguridad y gestión de riesgos',
-  'Metodologia de Teatro Critico': 'Metodología de teatro crítico',
-  'Movilidad urbana sostenible y espacios publicos': 'Movilidad urbana sostenible y espacios públicos',
-  'Pedagogía y fundamentos de la Nueva Escuela Mexicana: Metodologías sociocrítcas': 'Pedagogía y fundamentos de la Nueva Escuela Mexicana: metodologías sociocríticas',
-  'Ruta de construccion colectiva para la participacion estudiantil': 'Ruta de construcción colectiva para la participación estudiantil',
-  'Salud comunitaria y prevencion de enfermedades': 'Salud comunitaria y prevención de enfermedades',
-  'Sistema Integral de Purificacion y Gestion Comunitaria del Agua Potable': 'Sistema Integral de Purificación y Gestión Comunitaria del Agua Potable',
-  'Tecnologia para la inclusion y la educacion inclusiva': 'Tecnología para la inclusión y la educación inclusiva'
-};
+'use strict';
 
-let schools = [];
-let catalog = new Map();
-let state = {};
+const q = id => document.getElementById(id);
+const clean = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
+const fmt = value => Number(value || 0).toLocaleString('es-MX');
+const pct = (value, total) => total ? `${(value * 100 / total).toFixed(1)}%` : '0.0%';
 
-document.addEventListener('DOMContentLoaded', init);
+let dataset;
+let programMap = new Map();
+let maintenanceMap = new Map();
+let filtered = [];
+
+init();
 
 async function init() {
   try {
-    const keys = Object.keys(PATHS);
-    const values = await Promise.all(keys.map(key => fetchJson(PATHS[key])));
-    const data = Object.fromEntries(keys.map((key, index) => [key, values[index]]));
-    schools = (data.schools.features || []).map((feature, index) => {
-      const props = feature.properties || {};
-      return normalizeSchool(props, feature.geometry?.coordinates || [], index, props.es_solo_programa === 'SI');
-    }).filter(Boolean);
-    const programs = prepareProgramRows(data.programs);
-    mergeProgramOnly(schools, programs);
-    joinPrograms(schools, programs);
-    joinImprovements(schools, data.improvements);
-    buildCatalog(programs);
-    populateFilters();
-    bindUI();
+    dataset = await loadMainData();
+    programMap = new Map(dataset.programas.map(program => [program.id, program]));
+    maintenanceMap = new Map(dataset.mantenimiento_variables.map(variable => [variable.id, variable]));
+    buildFilters();
+    bindEvents();
     restoreState();
-    applyStats();
+    render();
   } catch (error) {
     console.error(error);
-    q('statsContext').textContent = 'No fue posible cargar las bases del visor.';
+    q('statsContext').textContent = 'No fue posible cargar la información.';
   }
 }
 
-async function fetchJson(path) {
-  const response = await fetch(path, {cache: 'no-store'});
-  if (!response.ok) throw new Error(path);
+async function fetchJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Error ${response.status} al cargar ${url}`);
   return response.json();
 }
 
-function prepareProgramRows(rows) {
-  return rows.filter(row => {
-    const program = norm(row.programa);
-    const project = norm(row.proyecto);
-    return !program.startsWith('1 2 3 por mi escuela') && !project.startsWith('1 2 3 por mi escuela');
-  }).map(row => ({
-    ...row,
-    programa: PROGRAM_TEXT_CORRECTIONS[row.programa] || row.programa,
-    proyecto: PROGRAM_TEXT_CORRECTIONS[row.proyecto] || row.proyecto
-  }));
-}
-
-function normalizeSchool(props, coords, index, programOnly) {
-  const lon = Number(coords[0] ?? props.lon);
-  const lat = Number(coords[1] ?? props.lat);
-  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+async function loadMainData() {
+  const manifest = await fetchJson('data/rm08_infraestructura.json');
+  if (!Array.isArray(manifest.partes_datos) || !manifest.partes_datos.length) return manifest;
+  const parts = await Promise.all(manifest.partes_datos.map(file => fetchJson(`data/${file}`)));
   return {
-    lat,
-    lon,
-    nombre: clean(props.inmueble || props.nombre) || 'Escuela sin nombre',
-    alcaldia: clean(props.alcaldia).toLocaleUpperCase('es-MX'),
-    nivel: clean(props.principal || props.nivel),
-    ccts: (programOnly ? [props.cct] : CCT_FIELDS.map(field => props[field])).map(cct).filter(Boolean),
-    territories: props.territorios || {},
-    programOnly,
-    programs: [],
-    improvementIds: []
+    ...manifest,
+    inmuebles: parts.flatMap(part => part.inmuebles || []),
+    ccts: parts.flatMap(part => part.ccts || [])
   };
 }
 
-function mergeProgramOnly(list, rows) {
-  const known = new Set(list.flatMap(school => school.ccts));
-  const missing = new Map();
-  rows.forEach(row => {
-    const key = cct(row.cct);
-    if (key && !known.has(key) && !missing.has(key)) missing.set(key, row);
-  });
-  missing.forEach((row, key) => {
-    const school = normalizeSchool({
-      cct: key,
-      nombre: row.nombre,
-      alcaldia: row.alcaldia,
-      nivel: row.nivel,
-      lon: row.lon,
-      lat: row.lat,
-      territorios: row.territorios || {}
-    }, [], `programa-${key}`, true);
-    if (school) list.push(school);
-  });
+function unique(values) {
+  return [...new Set(values.filter(Boolean))].sort((a,b) => String(a).localeCompare(String(b), 'es'));
 }
 
-function joinPrograms(list, rows) {
-  const index = new Map();
-  rows.forEach(row => {
-    const key = cct(row.cct);
-    if (!index.has(key)) index.set(key, []);
-    index.get(key).push(row);
-  });
-  list.forEach(school => {
-    const uniqueRows = new Map();
-    school.ccts.flatMap(key => index.get(key) || []).forEach(row => uniqueRows.set(`${cct(row.cct)}|${row.proyecto_id}`, row));
-    school.programs = [...uniqueRows.values()];
-  });
+function fillSelect(select, values) {
+  values.forEach(value => select.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`));
 }
 
-function joinImprovements(list, rows) {
-  const index = new Map(rows.map(row => [cct(row.cct), row]));
-  const byName = new Map();
-  rows.forEach(row => {
-    const key = norm(row.escuela);
-    if (!byName.has(key)) byName.set(key, []);
-    byName.get(key).push(row);
-  });
-  list.forEach(school => {
-    const ids = new Set();
-    const matchedByCct = school.ccts.map(key => index.get(key)).filter(Boolean);
-    const matchedByName = (byName.get(norm(school.nombre)) || []).filter(row =>
-      Number.isFinite(Number(row.lat)) && Number.isFinite(Number(row.lon)) &&
-      Math.abs(Number(row.lat) - school.lat) < 0.015 && Math.abs(Number(row.lon) - school.lon) < 0.015
-    );
-    [...new Map([...matchedByCct, ...matchedByName].map(row => [row.cct, row])).values()]
-      .forEach(row => (row.categorias || []).forEach(category => ids.add(category.id)));
-    school.improvementIds = [...ids];
-  });
+function buildFilters() {
+  const all = [...dataset.inmuebles, ...dataset.ccts];
+  fillSelect(q('stAlcaldia'), unique(all.map(item => item.alcaldia)));
+  fillSelect(q('stNivel'), unique(all.flatMap(item => item.niveles)));
+  q('stPrograms').innerHTML = dataset.programas.map(program =>
+    `<label><input type="checkbox" value="${escapeHtml(program.id)}"><span><i class="program-dot" style="--program-color:${escapeHtml(program.color)}"></i>${escapeHtml(program.label)}</span></label>`
+  ).join('');
+  q('stMaintenance').innerHTML = dataset.mantenimiento_variables.map(variable =>
+    `<label title="${escapeHtml(variable.nombre_completo)}"><input type="checkbox" value="${escapeHtml(variable.id)}"><span>${escapeHtml(variable.nombre)} <small>· ${variable.peso} pts</small></span></label>`
+  ).join('');
 }
 
-function buildCatalog(rows) {
-  rows.forEach(row => {
-    if (!catalog.has(row.proyecto_id)) catalog.set(row.proyecto_id, row.proyecto);
+function bindEvents() {
+  ['stViewMode','stAlcaldia','stNivel','stCCT','stNombre','stRankMin','stRankMax'].forEach(id => {
+    q(id).addEventListener(id === 'stViewMode' || id.startsWith('stA') || id === 'stNivel' ? 'change' : 'input', render);
   });
+  q('stPriorityFilters').addEventListener('change', render);
+  q('stPrograms').addEventListener('change', render);
+  q('stMaintenance').addEventListener('change', render);
+  document.querySelectorAll('input[name="stRisk"]').forEach(input => input.addEventListener('change', render));
+  q('stAllPrograms').onclick = () => setPrograms(true);
+  q('stClearPrograms').onclick = () => setPrograms(false);
+  q('stAllMaintenance').onclick = () => setMaintenance(true);
+  q('stClearMaintenance').onclick = () => setMaintenance(false);
+  q('stAllPriorities').onclick = () => setPriorities(true);
+  q('stClearPriorities').onclick = () => setPriorities(false);
+  q('stClearRisk').onclick = () => {
+    document.querySelectorAll('input[name="stRisk"]').forEach(input => input.checked = false);
+    render();
+  };
+  q('stLimpiar').onclick = clearFilters;
 }
 
-function populateFilters() {
-  fill('stNivel', unique(schools.map(school => school.nivel)));
+function setPrograms(checked) {
+  document.querySelectorAll('#stPrograms input').forEach(input => input.checked = checked);
+  render();
 }
 
-function bindUI() {
-  q('stNivel').onchange = applyStats;
-  q('stCCT').oninput = applyStats;
-  q('stNombre').oninput = applyStats;
-  q('stLimpiar').onclick = () => {
-    q('stNivel').value = '';
-    q('stCCT').value = '';
-    q('stNombre').value = '';
-    applyStats();
+function setPriorities(checked) {
+  document.querySelectorAll('#stPriorityFilters input').forEach(input => input.checked = checked);
+  render();
+}
+
+function setMaintenance(checked) {
+  document.querySelectorAll('#stMaintenance input').forEach(input => input.checked = checked);
+  render();
+}
+
+function getState() {
+  return {
+    mode:q('stViewMode').value,
+    alcaldia:q('stAlcaldia').value,
+    nivel:q('stNivel').value,
+    prioridades:[...document.querySelectorAll('#stPriorityFilters input:checked')].map(input => input.value),
+    cct:q('stCCT').value,
+    nombre:q('stNombre').value,
+    rankMin:q('stRankMin').value,
+    rankMax:q('stRankMax').value,
+    programas:[...document.querySelectorAll('#stPrograms input:checked')].map(input => input.value),
+    mantenimiento:[...document.querySelectorAll('#stMaintenance input:checked')].map(input => input.value),
+    risk:document.querySelector('input[name="stRisk"]:checked')?.value || ''
   };
 }
 
 function restoreState() {
-  try { state = JSON.parse(localStorage.getItem('visorProgramasStateV4') || '{}'); } catch { state = {}; }
-  state.projects = (state.projects || []).filter(id => catalog.has(id));
-  q('stNivel').value = state.nivel || '';
+  try {
+    const state = JSON.parse(localStorage.getItem('rm08_visor_state') || 'null');
+    if (!state) return;
+    q('stViewMode').value = state.mode || 'inmueble';
+    ['alcaldia','nivel'].forEach(field => {
+      const id = `st${field.charAt(0).toUpperCase() + field.slice(1)}`;
+      if ([...q(id).options].some(option => option.value === state[field])) q(id).value = state[field] || '';
+    });
+    const restoredPriorities = state.prioridades || (state.prioridad ? [state.prioridad] : []);
+    document.querySelectorAll('#stPriorityFilters input').forEach(input => input.checked = restoredPriorities.includes(input.value));
+    q('stCCT').value = state.cct || '';
+    q('stNombre').value = state.nombre || '';
+    q('stRankMin').value = state.rankMin || '';
+    q('stRankMax').value = state.rankMax || '';
+    document.querySelectorAll('#stPrograms input').forEach(input => input.checked = (state.programas || []).includes(input.value));
+    document.querySelectorAll('#stMaintenance input').forEach(input => input.checked = (state.mantenimiento || []).includes(input.value));
+    const risk = document.querySelector(`input[name="stRisk"][value="${state.risk}"]`);
+    if (risk) risk.checked = true;
+  } catch (_) {}
 }
 
-function applyStats() {
-  const nivel = q('stNivel').value;
-  const termCct = cct(q('stCCT').value);
-  const termName = norm(q('stNombre').value);
-  const projects = state.projects || [];
-  const improvements = state.improvements || [];
-  const territories = state.territories || {};
-  const result = schools.filter(school => {
-    if (nivel && school.nivel !== nivel) return false;
-    if (termCct && !school.ccts.some(value => value.includes(termCct))) return false;
-    if (termName && !norm(school.nombre).includes(termName)) return false;
-    if (school.programOnly && projects.length === 0) return false;
-    if (projects.length && !school.programs.some(row => projects.includes(row.proyecto_id))) return false;
-    if (improvements.length && !school.improvementIds.some(id => improvements.includes(id))) return false;
-    if (!matchesTerritories(school, territories)) return false;
+function render() {
+  if (!dataset) return;
+  const state = getState();
+  try { localStorage.setItem('rm08_visor_state', JSON.stringify(state)); } catch (_) {}
+  const programSet = new Set(state.programas);
+  const maintenanceSet = new Set(state.mantenimiento);
+  const prioritySet = new Set(state.prioridades);
+  const rankMin = state.rankMin === '' ? null : Number(state.rankMin);
+  const rankMax = state.rankMax === '' ? null : Number(state.rankMax);
+  const source = state.mode === 'cct' ? dataset.ccts : dataset.inmuebles;
+  filtered = source.filter(item => {
+    if (state.alcaldia && item.alcaldia !== state.alcaldia) return false;
+    if (state.nivel && !item.niveles.includes(state.nivel)) return false;
+    if (prioritySet.size && !prioritySet.has(item.clase_prioridad_final)) return false;
+    if (state.cct && !clean(item.ccts.join(' ')).includes(clean(state.cct))) return false;
+    if (state.nombre && !clean(item.nombres.join(' ')).includes(clean(state.nombre))) return false;
+    if (rankMin !== null && (item.prioridad_123_2026 === null || item.prioridad_123_2026 < rankMin)) return false;
+    if (rankMax !== null && (item.prioridad_123_2026 === null || item.prioridad_123_2026 > rankMax)) return false;
+    if (programSet.size && !item.programas.some(program => programSet.has(program))) return false;
+    if (maintenanceSet.size && !item.mantenimiento_pendientes.some(variable => maintenanceSet.has(variable))) return false;
+    if (state.risk === 'obs_fractura' && !item.cercano_fracturamiento_250m) return false;
+    if (state.risk === 'obs_subsidencia' && !item.subsidencia_alta) return false;
+    if (state.risk === 'obs_combinada' && !(item.cercano_fracturamiento_250m && item.subsidencia_alta)) return false;
     return true;
   });
-  render(result, {projects, improvements, territories});
+  updateContext(state);
+  updateCards(state);
+  updatePriorityTable();
+  updateLevelTable();
+  updateProgramTable();
+  updateMaintenanceTable();
+  updateRiskTable();
+  updateAlcaldiaTable();
+  updateRanking(state);
 }
 
-function matchesTerritories(school, territories) {
-  return ['alcaldia', 'ageb', 'cp', 'colonia'].every(type => {
-    const selected = territories[type] || [];
-    return !selected.length || selected.includes(clean(school.territories?.[type]));
-  });
-}
-
-function render(rows, selection) {
-  const withPrograms = rows.filter(school => school.programs.length).length;
-  const withImprovements = rows.filter(school => school.improvementIds.length).length;
-  q('stTotal').textContent = rows.length.toLocaleString('es-MX');
-  q('stPrograms').textContent = withPrograms.toLocaleString('es-MX');
-  q('stImprovements').textContent = withImprovements.toLocaleString('es-MX');
-  q('stAlcaldias').textContent = unique(rows.map(school => school.alcaldia)).length.toLocaleString('es-MX');
-
+function updateContext(state) {
   const tags = [];
-  selection.projects.forEach(id => tags.push(catalog.get(id) || id));
-  selection.improvements.forEach(id => tags.push(IMPROVEMENT_LABELS[id] || id));
-  const territoryCount = Object.values(selection.territories).reduce((sum, values) => sum + (values?.length || 0), 0);
-  if (territoryCount) tags.push(`${territoryCount} límite${territoryCount === 1 ? '' : 's'} territorial${territoryCount === 1 ? '' : 'es'}`);
-  q('statsContext').textContent = tags.length ? 'Se aplicó el cruce guardado desde el mapa.' : 'No hay cruces temáticos activos; se muestra la base general.';
-  q('statsTags').innerHTML = tags.map(text => `<span class="mini-tag blue">${esc(text)}</span>`).join('');
-
-  renderCoverage(rows);
-  renderGrouped(rows, 'nivel', 'tablaNivel', false);
-  renderGrouped(rows, 'alcaldia', 'tablaAlcaldia', true);
-  renderRanking(rows);
+  if (state.alcaldia) tags.push(state.alcaldia);
+  if (state.nivel) tags.push(state.nivel);
+  if (state.prioridades.length) tags.push(`IPA: ${state.prioridades.join(', ')}`);
+  if (state.cct) tags.push(`CCT: ${state.cct}`);
+  if (state.nombre) tags.push(`Escuela: ${state.nombre}`);
+  if (state.rankMin || state.rankMax) tags.push(`Clasificación ${state.rankMin || 1}–${state.rankMax || 464}`);
+  if (state.programas.length) tags.push(`${state.programas.length} mejora(s)`);
+  if (state.mantenimiento.length) tags.push(`${state.mantenimiento.length} necesidad(es) de mantenimiento`);
+  if (state.risk) tags.push('Observación territorial');
+  q('statsContext').textContent = tags.length ? `Se aplican ${tags.length} criterio(s) de manera simultánea.` : 'Sin filtros: se muestra la base completa.';
+  q('statsTags').innerHTML = tags.map(tag => `<span class="mini-tag blue">${escapeHtml(tag)}</span>`).join('');
 }
 
-function renderCoverage(rows) {
-  const conditions = [
-    ['Con programas', rows.filter(school => school.programs.length).length],
-    ['Con mantenimiento', rows.filter(school => school.improvementIds.length).length],
-    ['Con programas y mantenimiento', rows.filter(school => school.programs.length && school.improvementIds.length).length],
-    ['Sin programas ni mantenimiento', rows.filter(school => !school.programs.length && !school.improvementIds.length).length]
-  ];
-  q('tablaCobertura').innerHTML = conditions.map(([label, count]) => `
-    <tr><td>${esc(label)}</td><td>${count.toLocaleString('es-MX')}</td><td>${pct(count, rows.length)}%<div class="bar"><span style="width:${pct(count, rows.length)}%"></span></div></td></tr>`).join('');
+function updateCards(state) {
+  const unit = state.mode === 'cct' ? 'CCT' : 'Inmuebles';
+  q('stTotalLabel').textContent = `${unit} del resultado`;
+  q('stTotal').textContent = fmt(filtered.length);
+  q('stMapped').textContent = fmt(filtered.filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lon)).length);
+  q('stHigh').textContent = fmt(filtered.filter(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)).length);
+  q('stTerritorial').textContent = fmt(filtered.filter(item => item.observacion_territorial !== 'Sin observación').length);
+  q('stSupport').textContent = fmt(filtered.filter(item => item.tuvo_apoyo_previo).length);
+  q('stMaintenancePending').textContent = fmt(filtered.filter(item => item.mantenimiento_pendientes.length).length);
+  ['stDistributionUnit','stLevelUnit','stProgramUnit','stRiskUnit','stMaintenanceUnit','stAlcaldiaUnit'].forEach(id => q(id).textContent = unit);
 }
 
-function renderGrouped(rows, field, target, full) {
-  const groups = {};
-  rows.forEach(school => (groups[school[field] || 'No registrado'] ??= []).push(school));
-  const result = Object.entries(groups).map(([name, list]) => ({
-    name,
-    total: list.length,
-    programs: list.filter(school => school.programs.length).length,
-    improvements: list.filter(school => school.improvementIds.length).length
-  })).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'es'));
-  q(target).innerHTML = result.length ? result.map(row => full
-    ? `<tr><td>${esc(row.name)}</td><td>${row.total.toLocaleString('es-MX')}</td><td>${row.programs.toLocaleString('es-MX')}</td><td>${row.improvements.toLocaleString('es-MX')}</td><td>${pct(row.total, rows.length)}%</td></tr>`
-    : `<tr><td>${esc(row.name)}</td><td>${row.total.toLocaleString('es-MX')}</td><td>${row.programs.toLocaleString('es-MX')}</td><td>${row.improvements.toLocaleString('es-MX')}</td></tr>`
-  ).join('') : `<tr><td colspan="${full ? 5 : 4}" class="empty-row">No hay resultados.</td></tr>`;
+function updatePriorityTable() {
+  const labels = ['Muy alta','Alta','Media','Baja','Muy baja','Sin información'];
+  q('tablaDistribucion').innerHTML = labels.map(label => {
+    const count = filtered.filter(item => item.clase_prioridad_final === label).length;
+    return `<tr><td>${escapeHtml(label)}</td><td>${fmt(count)}</td><td>${barCell(count, filtered.length)}</td></tr>`;
+  }).join('');
 }
 
-function renderRanking(rows) {
-  q('tablaRanking').innerHTML = rows.length ? [...rows]
-    .sort((a, b) => a.alcaldia.localeCompare(b.alcaldia, 'es') || a.nombre.localeCompare(b.nombre, 'es'))
-    .slice(0, 500)
-    .map((school, index) => `<tr>
-      <td>${index + 1}</td>
-      <td>${esc(school.nombre)}</td>
-      <td>${esc(school.ccts.join(', '))}</td>
-      <td>${esc(school.alcaldia)}</td>
-      <td>${esc(school.nivel)}</td>
-      <td>${esc(unique(school.programs.map(row => row.proyecto)).join(' · ') || '—')}</td>
-      <td>${esc(school.improvementIds.map(id => IMPROVEMENT_LABELS[id] || id).join(' · ') || '—')}</td>
-    </tr>`).join('') : '<tr><td colspan="7" class="empty-row">No hay resultados.</td></tr>';
+function updateLevelTable() {
+  const rows = groupBy(filtered, item => item.nivel || 'Sin nivel').map(([label, items]) => ({
+    label, count:items.length, high:items.filter(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)).length
+  })).sort((a,b) => b.count - a.count);
+  q('tablaNivel').innerHTML = rows.length ? rows.map(row => `<tr><td>${escapeHtml(row.label)}</td><td>${fmt(row.count)}</td><td>${fmt(row.high)}</td></tr>`).join('') : emptyRow(3);
 }
 
-function fill(id, values) {
-  const select = q(id);
-  const first = select.querySelector('option').outerHTML;
-  select.innerHTML = first + values.map(value => `<option value="${esc(value)}">${esc(value)}</option>`).join('');
+function updateMaintenanceTable() {
+  q('tablaMantenimiento').innerHTML = dataset.mantenimiento_variables.map(variable => {
+    const count = filtered.filter(item => item.mantenimiento_pendientes.includes(variable.id)).length;
+    return `<tr><td title="${escapeHtml(variable.nombre_completo)}">${escapeHtml(variable.nombre)}</td><td>${fmt(count)}</td><td>${barCell(count, filtered.length)}</td></tr>`;
+  }).join('');
 }
 
-function pct(value, total) {
-  return total ? (value / total * 100).toFixed(1) : '0.0';
+function updateProgramTable() {
+  q('tablaProgramas').innerHTML = dataset.programas.map(program => {
+    const count = filtered.filter(item => item.programas.includes(program.id)).length;
+    return `<tr><td><i class="program-dot" style="--program-color:${escapeHtml(program.color)}"></i>${escapeHtml(program.label)}</td><td>${fmt(count)}</td><td>${barCell(count, filtered.length)}</td></tr>`;
+  }).join('');
 }
 
-function cct(value) {
-  return clean(value).replace(/\s+/g, '').toUpperCase();
+function updateRiskTable() {
+  const labels = ['Observación combinada','Cercanía a fracturamiento','Subsidencia alta','Sin observación','Información territorial incompleta'];
+  q('tablaRiesgos').innerHTML = labels.map(label => {
+    const count = filtered.filter(item => item.observacion_territorial === label).length;
+    return `<tr><td>${escapeHtml(label)}</td><td>${fmt(count)}</td><td>${barCell(count, filtered.length)}</td></tr>`;
+  }).join('');
 }
 
-function clean(value) {
-  return value === null || value === undefined ? '' : String(value).trim().replace(/\s+/g, ' ');
+function updateAlcaldiaTable() {
+  const rows = groupBy(filtered, item => item.alcaldia || 'Sin alcaldía').map(([label, items]) => ({
+    label, count:items.length,
+    high:items.filter(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)).length,
+    program:items.filter(item => item.programas.length).length,
+    support:items.filter(item => item.tuvo_apoyo_previo).length
+  })).sort((a,b) => b.count - a.count);
+  q('tablaAlcaldia').innerHTML = rows.length ? rows.map(row => `<tr><td>${escapeHtml(row.label)}</td><td>${fmt(row.count)}</td><td>${fmt(row.high)}</td><td>${fmt(row.program)}</td><td>${fmt(row.support)}</td><td>${barCell(row.count, filtered.length)}</td></tr>`).join('') : emptyRow(6);
 }
 
-function norm(value) {
-  return clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function updateRanking(state) {
+  const rows = [...filtered].sort((a,b) =>
+    (b.indice_prioridad_final ?? -1) - (a.indice_prioridad_final ?? -1) ||
+    (a.prioridad_123_2026 ?? 9999) - (b.prioridad_123_2026 ?? 9999) ||
+    a.nombre.localeCompare(b.nombre, 'es')
+  ).slice(0, 500);
+  q('stRankingTitle').textContent = `${state.mode === 'cct' ? 'CCT' : 'Inmuebles'} del resultado`;
+  q('tablaRanking').innerHTML = rows.length ? rows.map((item,index) => `<tr><td>${index + 1}</td><td>${escapeHtml(item.nombre)}</td><td>${escapeHtml(item.ccts.join(', ') || '—')}</td><td>${escapeHtml(item.alcaldia || '—')}</td><td>${escapeHtml(item.niveles.join(', ') || '—')}</td><td><span class="priority-pill p-${clean(item.clase_prioridad_final).toLowerCase().replace(/\s+/g, '-')}">${escapeHtml(item.clase_prioridad_final)} · ${item.indice_prioridad_final ?? '—'}</span></td><td>${item.indice_mantenimiento === null ? 'Sin información' : `${item.indice_mantenimiento} · ${escapeHtml(item.clase_mantenimiento)}`}</td><td>${item.tuvo_apoyo_previo ? 'Sí' : 'No'}</td><td>${escapeHtml(item.mejoras_previas.join('; ') || '—')}</td><td>${item.prioridad_123_2026 ?? '—'}</td><td>${escapeHtml(item.programas.map(id => programMap.get(id)?.label || id).join('; ') || '—')}</td><td>${escapeHtml(item.observacion_territorial)}</td></tr>`).join('') : emptyRow(12);
 }
 
-function unique(values) {
-  return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+function groupBy(items, getter) {
+  const map = new Map();
+  items.forEach(item => {
+    const key = getter(item);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(item);
+  });
+  return [...map.entries()];
 }
 
-function q(id) {
-  return document.getElementById(id);
+function barCell(value, total) {
+  const width = total ? value * 100 / total : 0;
+  return `<div class="bar"><span style="width:${width.toFixed(2)}%"></span></div><small>${pct(value,total)}</small>`;
 }
 
-function esc(value) {
-  return clean(value).replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'}[char]));
+function emptyRow(cols) {
+  return `<tr><td colspan="${cols}" class="empty-row">No hay resultados para este cruce.</td></tr>`;
+}
+
+function clearFilters() {
+  ['stAlcaldia','stNivel','stCCT','stNombre','stRankMin','stRankMax'].forEach(id => q(id).value = '');
+  q('stViewMode').value = 'inmueble';
+  document.querySelectorAll('#stPriorityFilters input, #stPrograms input, #stMaintenance input, input[name="stRisk"]').forEach(input => input.checked = false);
+  render();
 }
