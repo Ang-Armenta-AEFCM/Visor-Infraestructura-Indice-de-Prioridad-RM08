@@ -2,10 +2,15 @@
 
 const DATA = {
   main: 'data/rm08_infraestructura.json',
+  supports: 'data/apoyos_detallados.json',
   alcaldias: 'data/alcaldias.json',
   subsidencias: 'data/subsidencias.json',
   fracturamiento: 'data/fracturamiento.json'
 };
+
+document.head.insertAdjacentHTML('beforeend', `<style id="support-detail-styles">
+.support-detail-list{display:grid;gap:9px}.support-detail{padding:11px;border:1px solid #a7d8c9;border-left:4px solid #0f766e;border-radius:9px;background:#f7fffc}.support-detail-head{display:grid;grid-template-columns:26px 1fr;gap:9px;align-items:start}.support-check{display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:#0f766e;color:#fff;font-size:14px;font-weight:900;line-height:1}.support-detail-head small{display:block;color:#64748b;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}.support-detail-head strong{display:block;margin-top:2px;color:#134e4a;font-size:12px;line-height:1.35}.support-detail-head em{display:block;margin-top:3px;color:#52677a;font-size:10px;font-style:normal;line-height:1.4}.support-detail>p{margin:9px 0 0 32px!important;color:#64748b;font-size:11px!important;line-height:1.45!important}.support-work-list{display:grid;gap:6px;margin:10px 0 0 32px;padding:0;list-style:none}.support-work-list li{display:grid;grid-template-columns:19px 1fr;gap:7px;align-items:start;padding:7px 8px;border:1px solid #d1fae5;border-radius:7px;background:#fff}.support-work-list li span{display:grid;place-items:center;width:18px;height:18px;border-radius:4px;background:#d1fae5;color:#047857;font-size:11px;font-weight:900}.support-work-list li strong{color:#334155;font-size:11px;line-height:1.4}@media(max-width:600px){.support-work-list,.support-detail>p{margin-left:0!important}}
+</style>`);
 
 const q = id => document.getElementById(id);
 const clean = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
@@ -75,11 +80,18 @@ async function bootstrap() {
 async function loadMainData() {
   const manifest = await fetchJson(DATA.main);
   if (!Array.isArray(manifest.partes_datos) || !manifest.partes_datos.length) return manifest;
-  const parts = await Promise.all(manifest.partes_datos.map(file => fetchJson(`data/${file}`)));
+  const [parts, supports] = await Promise.all([
+    Promise.all(manifest.partes_datos.map(file => fetchJson(`data/${file}`))),
+    fetchJson(DATA.supports)
+  ]);
+  const attachSupportDetails = (items, collection) => items.map(item => ({
+    ...item,
+    apoyos_recibidos_detalle: supports[collection]?.[item.uid] || []
+  }));
   return {
     ...manifest,
-    inmuebles: parts.flatMap(part => part.inmuebles || []),
-    ccts: parts.flatMap(part => part.ccts || [])
+    inmuebles: attachSupportDetails(parts.flatMap(part => part.inmuebles || []), 'inmuebles'),
+    ccts: attachSupportDetails(parts.flatMap(part => part.ccts || []), 'ccts')
   };
 }
 
