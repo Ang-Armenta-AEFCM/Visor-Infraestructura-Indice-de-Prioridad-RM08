@@ -84,14 +84,40 @@ async function loadMainData() {
     Promise.all(manifest.partes_datos.map(file => fetchJson(`data/${file}`))),
     fetchJson(DATA.supports)
   ]);
-  const attachSupportDetails = (items, collection) => items.map(item => ({
-    ...item,
-    apoyos_recibidos_detalle: supports[collection]?.[item.uid] || []
+  const updates = Array.isArray(supports.actualizaciones_programas) ? supports.actualizaciones_programas : [];
+  const attachSupportDetails = (items, collection) => items.map(item => {
+    const details = [...(supports[collection]?.[item.uid] || [])];
+    const matchingUpdates = updates.filter(update => item.ccts.includes(update.cct));
+    matchingUpdates.forEach(update => {
+      if (!details.some(detail => detail.programa === update.programa_nombre && detail.ejecutor === update.ejecutor)) {
+        details.push({programa:update.programa_nombre, ejecutor:update.ejecutor});
+      }
+    });
+    const updatedItem = matchingUpdates.reduce((updated, update) => ({
+      ...updated,
+      programas: [...new Set([...updated.programas, update.programa_id])],
+      mejoras_previas: [...new Set([...updated.mejoras_previas, update.programa_label])],
+      mejoras_previas_ids: [...new Set([...updated.mejoras_previas_ids, update.programa_id])],
+      tuvo_apoyo_previo: true,
+      apoyos_recibidos_detalle: details
+    }), {...item});
+    if (updatedItem.programas.includes('ilife_180_2026')) {
+      updatedItem.mejoras_previas = updatedItem.mejoras_previas.map(label => label === '180 ILIFE · 2026' ? '181 ILIFE · 2026' : label);
+    }
+    return {...updatedItem, apoyos_recibidos_detalle:details};
+  });
+  const inmuebles = attachSupportDetails(parts.flatMap(part => part.inmuebles || []), 'inmuebles');
+  const ccts = attachSupportDetails(parts.flatMap(part => part.ccts || []), 'ccts');
+  const programas = manifest.programas.map(program => ({
+    ...program,
+    label: program.id === 'ilife_180_2026' ? '181 ILIFE · 2026' : program.label,
+    count: program.id === 'ilife_180_2026' ? 181 : program.count
   }));
   return {
     ...manifest,
-    inmuebles: attachSupportDetails(parts.flatMap(part => part.inmuebles || []), 'inmuebles'),
-    ccts: attachSupportDetails(parts.flatMap(part => part.ccts || []), 'ccts')
+    programas,
+    inmuebles,
+    ccts
   };
 }
 
