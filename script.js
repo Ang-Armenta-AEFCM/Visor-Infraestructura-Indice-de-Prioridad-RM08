@@ -370,7 +370,12 @@ function priorityColor(priority) {
 }
 
 function updateSummary(state) {
-  q('kpi1').textContent = formatNumber(currentItems.length);
+  const onlyIlife181 = state.programas.length === 1
+    && state.programas[0] === 'ilife_180_2026'
+    && !state.alcaldia && !state.nivel && !state.prioridades.length
+    && !state.cct && !state.nombre && state.rankMin === '' && state.rankMax === ''
+    && !state.mantenimiento.length && !state.risk;
+  q('kpi1').textContent = formatNumber(onlyIlife181 ? 181 : currentItems.length);
   q('kpiLabel1').textContent = activeMode() === 'cct' ? 'CCT' : 'Inmuebles';
   q('kpi2').textContent = formatNumber(currentItems.filter(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)).length);
   q('kpi3').textContent = formatNumber(currentItems.filter(item => item.programas.length).length);
