@@ -67,7 +67,7 @@ async function bootstrap() {
     q('mapStatus').classList.add('hidden');
   } catch (error) {
     console.error(error);
-    q('mapStatus').textContent = 'No fue posible cargar la información del visor.';
+    q('mapStatus').textContent = `No fue posible cargar la información del visor: ${error.message}`;
     q('mapStatus').classList.add('error');
   }
 }
@@ -84,7 +84,7 @@ async function loadMainData() {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url);
+  const response = await fetch(url, {cache:'no-store'});
   if (!response.ok) throw new Error(`Error ${response.status} al cargar ${url}`);
   return response.json();
 }
@@ -391,9 +391,7 @@ function showDetail(item) {
   const programCards = item.programa_registros.length
     ? item.programa_registros.map(ref => renderProgramRecord(ref)).join('')
     : '<p class="muted-box">No hay registros de mejoras vinculados a esta unidad.</p>';
-  const improvementList = item.mejoras_previas.length
-    ? `<ul class="improvement-list">${item.mejoras_previas.map(name => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`
-    : '<p class="muted-box">No se identificaron mejoras previas vinculadas.</p>';
+  const supportDetails = renderSupportDetails(item);
   const maintenanceCards = item.mantenimiento_disponible
     ? (item.mantenimiento_pendientes.length
       ? item.mantenimiento_pendientes.map(renderMaintenanceNeed).join('')
@@ -414,7 +412,7 @@ function showDetail(item) {
     <div class="tab-pane active" data-pane="general">
       <dl><dt>Unidad</dt><dd>${item.tipo === 'cct' ? 'CCT' : 'Inmueble'}</dd><dt>Código DGA</dt><dd>${escapeHtml(item.codigos_dga.join(', ') || 'Sin dato')}</dd><dt>CCT</dt><dd>${escapeHtml(item.ccts.join(', ') || 'Sin CCT')}</dd><dt>Alcaldía</dt><dd>${escapeHtml(item.alcaldia || 'Sin dato')}</dd><dt>Colonia</dt><dd>${escapeHtml(item.colonia || 'Sin dato')}</dd><dt>Domicilio</dt><dd>${escapeHtml(item.domicilio || 'Sin dato')}</dd><dt>Nivel</dt><dd>${escapeHtml(item.niveles.join(', ') || 'Sin dato')}</dd><dt>Coordenadas</dt><dd>${isMapped(item) ? `${item.lat.toFixed(6)}, ${item.lon.toFixed(6)}` : 'Sin coordenadas'}</dd></dl>
       <div class="support-summary ${item.tuvo_apoyo_previo ? 'has-support' : ''}"><span>Apoyo previo identificado</span><strong>${item.tuvo_apoyo_previo ? 'Sí' : 'No'}</strong></div>
-      ${item.tuvo_apoyo_previo ? `<h3 class="section-subtitle">Mejoras recibidas</h3>${improvementList}` : ''}
+      ${item.tuvo_apoyo_previo ? `<h3 class="section-subtitle">Apoyos y trabajos recibidos</h3>${supportDetails}` : ''}
     </div>
     <div class="tab-pane" data-pane="prioridad">
       <div class="priority-card priority-${prioritySlug}"><span>Índice de Prioridad de Atención</span><strong>${escapeHtml(item.clase_prioridad_final)}</strong><em>${item.indice_prioridad_final === null ? 'Sin índice completo' : `${item.indice_prioridad_final.toFixed(1)} / 100`}</em></div>
@@ -428,7 +426,7 @@ function showDetail(item) {
     </div>
     <div class="tab-pane" data-pane="programas">
       <div class="support-summary ${item.tuvo_apoyo_previo ? 'has-support' : ''}"><span>Apoyo previo identificado</span><strong>${item.tuvo_apoyo_previo ? 'Sí' : 'No'}</strong></div>
-      <h3 class="section-subtitle">Mejoras recibidas</h3>${improvementList}
+      <h3 class="section-subtitle">Apoyos y trabajos recibidos</h3>${supportDetails}
       <h3 class="section-subtitle">Registros de mejoras</h3>${programCards}
     </div>
     <div class="tab-pane" data-pane="territorio">
@@ -458,6 +456,29 @@ function renderMaintenanceNeed(variableId) {
   const variable = maintenanceMap.get(variableId);
   if (!variable) return '';
   return `<article class="maintenance-need"><div><span>${escapeHtml(variable.grupo)}</span><strong>${escapeHtml(variable.nombre_completo)}</strong></div><b>${variable.peso} pts</b><p>${escapeHtml(variable.descripcion)}</p></article>`;
+}
+
+function renderSupportDetails(item) {
+  const supports = Array.isArray(item.apoyos_recibidos_detalle) ? item.apoyos_recibidos_detalle : [];
+  if (!item.tuvo_apoyo_previo) return '<p class="muted-box">No se identificaron apoyos previos vinculados.</p>';
+  if (!supports.length) {
+    return item.mejoras_previas.length
+      ? `<div class="support-detail-list">${item.mejoras_previas.map(programa => `<article class="support-detail"><div class="support-detail-head"><span class="support-check" aria-hidden="true">✓</span><div><small>Programa de apoyo</small><strong>${escapeHtml(programa)}</strong></div></div><p>El padrón confirma el apoyo, pero la base no incluye el desglose de los trabajos.</p></article>`).join('')}</div>`
+      : '<p class="muted-box">El padrón confirma apoyo previo, pero no incluye su desglose.</p>';
+  }
+  return `<div class="support-detail-list">${supports.map(support => {
+    const metadata = [
+      support.ejecutor ? `Ejecutor: ${support.ejecutor}` : '',
+      support.etapa || '',
+      support.estado || '',
+      support.contrato ? `Contrato: ${support.contrato}` : ''
+    ].filter(Boolean);
+    const works = Array.isArray(support.trabajos) ? support.trabajos : [];
+    return `<article class="support-detail">
+      <div class="support-detail-head"><span class="support-check" aria-hidden="true">✓</span><div><small>Programa de apoyo</small><strong>${escapeHtml(support.programa || 'Apoyo registrado')}</strong>${metadata.length ? `<em>${metadata.map(escapeHtml).join(' · ')}</em>` : ''}</div></div>
+      ${works.length ? `<ul class="support-work-list">${works.map(work => `<li><span aria-hidden="true">✓</span><strong>${escapeHtml(work)}</strong></li>`).join('')}</ul>` : '<p>El padrón confirma el apoyo, pero la base no incluye el desglose de los trabajos.</p>'}
+    </article>`;
+  }).join('')}</div>`;
 }
 
 function hideSidebar() {

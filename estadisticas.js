@@ -24,12 +24,12 @@ async function init() {
     render();
   } catch (error) {
     console.error(error);
-    q('statsContext').textContent = 'No fue posible cargar la información.';
+    q('statsContext').textContent = `No fue posible cargar la información: ${error.message}`;
   }
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url);
+  const response = await fetch(url, {cache:'no-store'});
   if (!response.ok) throw new Error(`Error ${response.status} al cargar ${url}`);
   return response.json();
 }
