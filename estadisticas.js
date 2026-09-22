@@ -121,7 +121,7 @@ function restoreState() {
   try {
     const state = JSON.parse(localStorage.getItem('rm08_visor_state') || 'null');
     if (!state) return;
-    q('stViewMode').value = state.mode || 'inmueble';
+    q('stViewMode').value = 'cct';
     ['alcaldia','nivel'].forEach(field => {
       const id = `st${field.charAt(0).toUpperCase() + field.slice(1)}`;
       if ([...q(id).options].some(option => option.value === state[field])) q(id).value = state[field] || '';
@@ -148,7 +148,7 @@ function render() {
   const prioritySet = new Set(state.prioridades);
   const rankMin = state.rankMin === '' ? null : Number(state.rankMin);
   const rankMax = state.rankMax === '' ? null : Number(state.rankMax);
-  const source = state.mode === 'cct' ? dataset.ccts : dataset.inmuebles;
+  const source = dataset.ccts;
   filtered = source.filter(item => {
     if (state.alcaldia && item.alcaldia !== state.alcaldia) return false;
     if (state.nivel && !item.niveles.includes(state.nivel)) return false;
@@ -181,7 +181,7 @@ function updateContext(state) {
   if (state.nivel) tags.push(state.nivel);
   if (state.prioridades.length) tags.push(`IPA: ${state.prioridades.join(', ')}`);
   if (state.cct) tags.push(`CCT: ${state.cct}`);
-  if (state.nombre) tags.push(`Escuela: ${state.nombre}`);
+  if (state.nombre) tags.push(`Plantel: ${state.nombre}`);
   if (state.rankMin || state.rankMax) tags.push(`Clasificación ${state.rankMin || 1}–${state.rankMax || 464}`);
   if (state.programas.length) tags.push(`${state.programas.length} mejora(s)`);
   if (state.mantenimiento.length) tags.push(`${state.mantenimiento.length} necesidad(es) de mantenimiento`);
@@ -280,7 +280,7 @@ function emptyRow(cols) {
 
 function clearFilters() {
   ['stAlcaldia','stNivel','stCCT','stNombre','stRankMin','stRankMax'].forEach(id => q(id).value = '');
-  q('stViewMode').value = 'inmueble';
+  q('stViewMode').value = 'cct';
   document.querySelectorAll('#stPriorityFilters input, #stPrograms input, #stMaintenance input, input[name="stRisk"]').forEach(input => input.checked = false);
   render();
 }

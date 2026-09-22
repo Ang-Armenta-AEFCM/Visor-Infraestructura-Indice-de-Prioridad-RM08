@@ -25,11 +25,7 @@
     <div class="sidebar-head"><div><span class="panel-kicker">Herramientas</span><strong>Panel de consulta</strong></div><button id="toggleSidebar" class="icon-button" title="Ocultar menú">‹</button></div>
     <section class="panel">
       <h2>Visualización</h2>
-      <p class="hint">Elige la unidad con la que quieres visualizar y contar la información.</p>
-      <div class="view-mode-switch" role="radiogroup" aria-label="Unidad de visualización">
-        <label><input type="radio" name="viewMode" value="inmueble" checked><span>Por inmueble</span></label>
-        <label><input type="radio" name="viewMode" value="cct"><span>Por CCT</span></label>
-      </div>
+      <p class="hint">Mapa por inmueble · recuentos por CCT.</p>
       <label class="inline-check"><input type="checkbox" id="toggleSchools" checked><span>Mostrar planteles</span></label>
     </section>
 
@@ -49,7 +45,7 @@
         </div>
       </fieldset>
       <label for="buscarCCT">Buscar por CCT</label><input id="buscarCCT" list="listaCCT" type="search" placeholder="Escribe o selecciona CCT"><datalist id="listaCCT"></datalist>
-      <label for="buscarNombre">Buscar por escuela</label><input id="buscarNombre" list="listaNombres" type="search" placeholder="Nombre del plantel"><datalist id="listaNombres"></datalist>
+      <label for="buscarNombre">Buscar por plantel</label><input id="buscarNombre" list="listaNombres" type="search" placeholder="Nombre del plantel"><datalist id="listaNombres"></datalist>
       <fieldset class="rank-fieldset"><legend>Clasificación 1, 2, 3 2026 · Prioridad 464</legend><div class="rank-range"><div><label for="rankMin">Desde</label><input id="rankMin" type="number" min="1" max="464" placeholder="1"></div><div><label for="rankMax">Hasta</label><input id="rankMax" type="number" min="1" max="464" placeholder="464"></div></div><p>Los números son posiciones de clasificación, no cantidades.</p></fieldset>
       <div class="buttons single-action"><button id="btnLimpiar" class="secondary" type="button">Limpiar filtros</button></div>
     </section>
@@ -66,7 +62,7 @@
     <section class="panel collapsible-panel">
       <button id="toggleMantenimiento" class="collapse-title" aria-expanded="false"><span>Mantenimiento</span><span id="mantenimientoArrow">›</span></button>
       <div id="mantenimientoBody" class="collapsible-body hidden">
-        <p class="hint">Selecciona una o varias necesidades. Se mostrarán únicamente las escuelas que tengan pendiente al menos una de las opciones marcadas; este filtro se cruza con mejoras, prioridad y territorio.</p>
+        <p class="hint">Selecciona una o varias necesidades. Se mostrarán únicamente los planteles que tengan pendiente al menos una de las opciones marcadas; este filtro se cruza con mejoras, prioridad y territorio.</p>
         <div class="section-actions"><button type="button" id="selectAllMantenimiento" class="compact-action">Seleccionar todas</button><button type="button" id="clearMantenimiento" class="compact-action secondary-action">Quitar todas</button></div>
         <div id="maintenanceFilters" class="theme-checklist maintenance-checklist"></div>
       </div>

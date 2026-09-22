@@ -16,11 +16,11 @@
     <section class="stats-filter-panel">
       <h2>Filtros generales</h2>
       <div class="stats-filter-grid">
-        <div><label for="stViewMode">Visualizar información</label><select id="stViewMode"><option value="inmueble">Por inmueble</option><option value="cct">Por CCT</option></select></div>
+        <div><label for="stViewMode">Visualizar información</label><select id="stViewMode"><option value="cct" selected>Por CCT</option></select></div>
         <div><label for="stAlcaldia">Alcaldía</label><select id="stAlcaldia"><option value="">Todas</option></select></div>
         <div><label for="stNivel">Nivel educativo</label><select id="stNivel"><option value="">Todos</option></select></div>
         <div><label for="stCCT">CCT</label><input id="stCCT" type="search" placeholder="Buscar CCT"></div>
-        <div><label for="stNombre">Escuela</label><input id="stNombre" type="search" placeholder="Buscar nombre"></div>
+        <div><label for="stNombre">Plantel</label><input id="stNombre" type="search" placeholder="Buscar nombre"></div>
         <div><label for="stRankMin">Clasificación 1,2,3 desde</label><input id="stRankMin" type="number" min="1" max="464" placeholder="1"></div>
         <div><label for="stRankMax">Clasificación 1,2,3 hasta</label><input id="stRankMax" type="number" min="1" max="464" placeholder="464"></div>
       </div>
@@ -65,7 +65,7 @@
     </section>
 
     <section class="cards">
-      <div class="card"><span id="stTotalLabel">Inmuebles del resultado</span><strong id="stTotal">0</strong></div>
+      <div class="card"><span id="stTotalLabel">CCT del resultado</span><strong id="stTotal">0</strong></div>
       <div class="card"><span>Con coordenadas</span><strong id="stMapped">0</strong></div>
       <div class="card"><span>Prioridad alta o muy alta</span><strong id="stHigh">0</strong></div>
       <div class="card"><span>Con observación territorial</span><strong id="stTerritorial">0</strong></div>
@@ -83,7 +83,7 @@
     </section>
     <section class="table-panel"><h2>Necesidades de mantenimiento</h2><table><thead><tr><th>Necesidad</th><th id="stMaintenanceUnit">Inmuebles</th><th>Proporción</th></tr></thead><tbody id="tablaMantenimiento"></tbody></table></section>
     <section class="table-panel"><h2>Resultados por alcaldía</h2><table><thead><tr><th>Alcaldía</th><th id="stAlcaldiaUnit">Inmuebles</th><th>Alta o muy alta</th><th>Con mejora</th><th>Con apoyo previo</th><th>Proporción</th></tr></thead><tbody id="tablaAlcaldia"></tbody></table></section>
-    <section class="table-panel"><h2 id="stRankingTitle">Inmuebles del resultado</h2><table><thead><tr><th>#</th><th>Escuela / inmueble</th><th>CCT</th><th>Alcaldía</th><th>Nivel</th><th>Prioridad final</th><th>Mantenimiento</th><th>Apoyo previo</th><th>Mejoras recibidas</th><th>Clasificación 1,2,3</th><th>Mejoras vinculadas</th><th>Observación</th></tr></thead><tbody id="tablaRanking"></tbody></table><p class="stats-table-note">La tabla muestra hasta 500 resultados; los indicadores y distribuciones consideran el total filtrado.</p></section>
+    <section class="table-panel"><h2 id="stRankingTitle">CCT del resultado</h2><table><thead><tr><th>#</th><th>Plantel / inmueble</th><th>CCT</th><th>Alcaldía</th><th>Nivel</th><th>Prioridad final</th><th>Mantenimiento</th><th>Apoyo previo</th><th>Mejoras recibidas</th><th>Clasificación 1,2,3</th><th>Mejoras vinculadas</th><th>Observación</th></tr></thead><tbody id="tablaRanking"></tbody></table><p class="stats-table-note">La tabla muestra hasta 500 resultados; los indicadores y distribuciones consideran el total filtrado.</p></section>
   </main>
   <script src="estadisticas.js?v=20260918-completo"></script>
 </body>

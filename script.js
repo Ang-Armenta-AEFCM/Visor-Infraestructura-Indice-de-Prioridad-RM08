@@ -160,7 +160,7 @@ function buildControls() {
     `<label class="inline-check" title="${escapeHtml(variable.nombre_completo)}"><input type="checkbox" value="${escapeHtml(variable.id)}"><span>${escapeHtml(variable.nombre)} <small>· ${variable.peso} pts</small></span></label>`
   ).join('');
   refreshDatalists();
-  q('coverageNote').textContent = `${formatNumber(dataset.metadata.inmuebles_con_indice_final)} de ${formatNumber(dataset.metadata.total_inmuebles)} inmuebles tienen índice final completo · ${formatNumber(dataset.metadata.registros_sin_coordenadas)} registros fuente sin coordenadas no se dibujan.`;
+  q('coverageNote').textContent = `${formatNumber(dataset.metadata.cct_con_indice_final)} de ${formatNumber(dataset.metadata.total_cct)} CCT tienen índice final completo · ${formatNumber(dataset.metadata.registros_sin_coordenadas)} registros fuente sin coordenadas no se dibujan.`;
 }
 
 function fillSelect(select, values) {
@@ -176,7 +176,7 @@ function activeMode() {
 }
 
 function activeItems() {
-  return activeMode() === 'cct' ? dataset.ccts : dataset.inmuebles;
+  return dataset.inmuebles;
 }
 
 function refreshDatalists() {
@@ -350,8 +350,17 @@ function drawMarkers() {
   markersLayer.clearLayers();
   if (!q('toggleSchools').checked) return;
   const canvas = L.canvas({padding:.35});
+  const coincident = new Map();
   currentItems.filter(isMapped).forEach(item => {
-    const marker = L.circleMarker([item.lat, item.lon], {
+    const key = `${item.lat.toFixed(7)}|${item.lon.toFixed(7)}`;
+    if (!coincident.has(key)) coincident.set(key, []);
+    coincident.get(key).push(item);
+  });
+  currentItems.filter(isMapped).forEach(item => {
+    const group = coincident.get(`${item.lat.toFixed(7)}|${item.lon.toFixed(7)}`);
+    const angle = 2 * Math.PI * group.indexOf(item) / group.length;
+    const radius = group.length > 1 ? 0.000075 : 0;
+    const marker = L.circleMarker([item.lat + Math.sin(angle) * radius, item.lon + Math.cos(angle) * radius], {
       renderer:canvas,
       radius:6,
       color:'#fff',
@@ -375,13 +384,23 @@ function updateSummary(state) {
     && !state.alcaldia && !state.nivel && !state.prioridades.length
     && !state.cct && !state.nombre && state.rankMin === '' && state.rankMax === ''
     && !state.mantenimiento.length && !state.risk;
-  q('kpi1').textContent = formatNumber(onlyIlife181 ? 181 : currentItems.length);
-  q('kpiLabel1').textContent = activeMode() === 'cct' ? 'CCT' : 'Inmuebles';
-  q('kpi2').textContent = formatNumber(currentItems.filter(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)).length);
-  q('kpi3').textContent = formatNumber(currentItems.filter(item => item.programas.length).length);
-  q('kpi4').textContent = formatNumber(currentItems.filter(item => item.observacion_territorial !== 'Sin observación').length);
-  q('kpi5').textContent = formatNumber(currentItems.filter(item => item.tuvo_apoyo_previo).length);
-  q('kpi6').textContent = formatNumber(currentItems.filter(item => item.mantenimiento_pendientes.length).length);
+  const byCct = new Map(dataset.ccts.map(item => [item.cct, item]));
+  const memberCcts = item => item.ccts.filter(key => {
+    const record = byCct.get(key);
+    if (state.cct && !clean(key).includes(clean(state.cct))) return false;
+    if (state.nivel && record && !record.niveles.includes(state.nivel)) return false;
+    if (state.nombre && record && !clean(record.nombre).includes(clean(state.nombre))) return false;
+    return true;
+  });
+  const currentCcts = new Set(currentItems.flatMap(memberCcts));
+  const metric = predicate => new Set(currentItems.filter(predicate).flatMap(memberCcts)).size;
+  q('kpi1').textContent = formatNumber(currentCcts.size);
+  q('kpiLabel1').textContent = 'CCT';
+  q('kpi2').textContent = formatNumber(metric(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)));
+  q('kpi3').textContent = formatNumber(metric(item => item.programas.length));
+  q('kpi4').textContent = formatNumber(metric(item => item.observacion_territorial !== 'Sin observación' && item.observacion_territorial !== 'Sin información'));
+  q('kpi5').textContent = formatNumber(metric(item => item.tuvo_apoyo_previo));
+  q('kpi6').textContent = formatNumber(metric(item => item.mantenimiento_pendientes.length));
   const parts = [];
   if (state.prioridades.length) parts.push(`IPA: ${state.prioridades.map(value => value.toLowerCase()).join(', ')}`);
   if (state.programas.length) parts.push(`${state.programas.length} mejora(s)`);
@@ -453,6 +472,7 @@ function showDetail(item) {
       <button class="tab-btn" data-tab="fuente">Datos fuente</button>
     </div>
     <div class="tab-pane active" data-pane="general">
+      ${item.tipo === 'inmueble' && item.ccts.length > 1 ? `<div class="cct-selector">${item.ccts.map(key => `<button type="button" data-cct="${escapeHtml(key)}">${escapeHtml(key)}</button>`).join('')}</div>` : ''}
       <dl><dt>Unidad</dt><dd>${item.tipo === 'cct' ? 'CCT' : 'Inmueble'}</dd><dt>Código DGA</dt><dd>${escapeHtml(item.codigos_dga.join(', ') || 'Sin dato')}</dd><dt>CCT</dt><dd>${escapeHtml(item.ccts.join(', ') || 'Sin CCT')}</dd><dt>Alcaldía</dt><dd>${escapeHtml(item.alcaldia || 'Sin dato')}</dd><dt>Colonia</dt><dd>${escapeHtml(item.colonia || 'Sin dato')}</dd><dt>Domicilio</dt><dd>${escapeHtml(item.domicilio || 'Sin dato')}</dd><dt>Nivel</dt><dd>${escapeHtml(item.niveles.join(', ') || 'Sin dato')}</dd><dt>Coordenadas</dt><dd>${isMapped(item) ? `${item.lat.toFixed(6)}, ${item.lon.toFixed(6)}` : 'Sin coordenadas'}</dd></dl>
       <div class="support-summary ${item.tuvo_apoyo_previo ? 'has-support' : ''}"><span>Apoyo previo identificado</span><strong>${item.tuvo_apoyo_previo ? 'Sí' : 'No'}</strong></div>
       ${item.tuvo_apoyo_previo ? `<h3 class="section-subtitle">Apoyos y trabajos recibidos</h3>${supportDetails}` : ''}
@@ -479,6 +499,10 @@ function showDetail(item) {
     <div class="tab-pane" data-pane="fuente">${sourceCards}</div>`;
   q('detailPanel').classList.add('open');
   q('detailContent').querySelectorAll('.tab-btn').forEach(button => button.addEventListener('click', () => activateTab(button.dataset.tab)));
+  q('detailContent').querySelectorAll('[data-cct]').forEach(button => button.addEventListener('click', () => {
+    const itemCct = dataset.ccts.find(record => record.cct === button.dataset.cct);
+    if (itemCct) showDetail(itemCct);
+  }));
 }
 
 function activateTab(tab) {
