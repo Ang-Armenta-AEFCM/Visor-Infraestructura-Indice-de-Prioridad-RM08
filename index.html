@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Visor del Índice de Prioridad de Atención</title>
   <link rel="stylesheet" href="vendor/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="style.css?v=20260901-ipa">
+  <link rel="stylesheet" href="style.css?v=20260928-cct-turnos">
 </head>
 <body>
 <header class="topbar">
@@ -25,7 +25,7 @@
     <div class="sidebar-head"><div><span class="panel-kicker">Herramientas</span><strong>Panel de consulta</strong></div><button id="toggleSidebar" class="icon-button" title="Ocultar menú">‹</button></div>
     <section class="panel">
       <h2>Visualización</h2>
-      <p class="hint">Mapa por inmueble · recuentos por CCT.</p>
+      <p class="hint">Mapa por plantel · resumen por plantel, CCT y CCT/turno.</p>
       <label class="inline-check"><input type="checkbox" id="toggleSchools" checked><span>Mostrar planteles</span></label>
     </section>
 
@@ -45,7 +45,7 @@
         </div>
       </fieldset>
       <label for="buscarCCT">Buscar por CCT</label><input id="buscarCCT" list="listaCCT" type="search" placeholder="Escribe o selecciona CCT"><datalist id="listaCCT"></datalist>
-      <label for="buscarNombre">Buscar por plantel</label><input id="buscarNombre" list="listaNombres" type="search" placeholder="Nombre del plantel"><datalist id="listaNombres"></datalist>
+      <label for="buscarNombre">Buscar por nombre</label><input id="buscarNombre" list="listaNombres" type="search" placeholder="Nombre del plantel"><datalist id="listaNombres"></datalist>
       <fieldset class="rank-fieldset"><legend>Clasificación 1, 2, 3 2026 · Prioridad 464</legend><div class="rank-range"><div><label for="rankMin">Desde</label><input id="rankMin" type="number" min="1" max="464" placeholder="1"></div><div><label for="rankMax">Hasta</label><input id="rankMax" type="number" min="1" max="464" placeholder="464"></div></div><p>Los números son posiciones de clasificación, no cantidades.</p></fieldset>
       <div class="buttons single-action"><button id="btnLimpiar" class="secondary" type="button">Limpiar filtros</button></div>
     </section>
@@ -92,12 +92,13 @@
       <h2>Resumen visible</h2>
       <p id="activeCrossSummary" class="cross-summary">Sin cruces temáticos activos.</p>
       <div class="kpis dynamic-kpis">
-        <div><strong id="kpi1">0</strong><span id="kpiLabel1">Inmuebles</span></div>
-        <div><strong id="kpi2">0</strong><span>Prioridad alta o muy alta</span></div>
-        <div><strong id="kpi3">0</strong><span>Con mejora</span></div>
-        <div><strong id="kpi4">0</strong><span>Con observación</span></div>
-        <div><strong id="kpi5">0</strong><span>Con apoyo previo</span></div>
-        <div><strong id="kpi6">0</strong><span>Con mantenimiento pendiente</span></div>
+        <div><strong id="kpiPlanteles">0</strong><span>Planteles</span></div>
+        <div><strong id="kpiCct">0</strong><span>CCT</span></div>
+        <div><strong id="kpi2">0</strong><span>CCT/turno con prioridad alta o muy alta</span></div>
+        <div><strong id="kpi3">0</strong><span>CCT/turno con mejora</span></div>
+        <div><strong id="kpi4">0</strong><span>CCT/turno con observación</span></div>
+        <div><strong id="kpi5">0</strong><span>CCT/turno con apoyo previo</span></div>
+        <div><strong id="kpi6">0</strong><span>CCT/turno con mantenimiento pendiente</span></div>
       </div>
       <p id="coverageNote" class="coverage-note"></p>
     </section>
@@ -114,6 +115,6 @@
 </main>
 
 <script src="vendor/leaflet.js?v=1.9.4"></script>
-<script src="script.js?v=20260918-ilife-181-resumen"></script>
+<script src="script.js?v=20260928-cct-turnos"></script>
 </body>
 </html>

@@ -2,6 +2,7 @@
 
 const DATA = {
   main: 'data/rm08_infraestructura.json',
+  turnos: 'data/catalogo_cct_turnos.json',
   supports: 'data/apoyos_detallados.json',
   alcaldias: 'data/alcaldias.json',
   subsidencias: 'data/subsidencias.json',
@@ -21,6 +22,8 @@ const isMapped = item => Number.isFinite(item.lat) && Number.isFinite(item.lon);
 let dataset;
 let programMap = new Map();
 let maintenanceMap = new Map();
+let cctRecordMap = new Map();
+let turnCatalogMap = new Map();
 let currentItems = [];
 let markersLayer;
 let subsidyLayer;
@@ -56,12 +59,14 @@ bootstrap();
 
 async function bootstrap() {
   try {
-    const [main, alcaldias, subsidencias, fracturamiento] = await Promise.all([
-      loadMainData(), fetchJson(DATA.alcaldias), fetchJson(DATA.subsidencias), fetchJson(DATA.fracturamiento)
+    const [main, turnCatalog, alcaldias, subsidencias, fracturamiento] = await Promise.all([
+      loadMainData(), fetchJson(DATA.turnos), fetchJson(DATA.alcaldias), fetchJson(DATA.subsidencias), fetchJson(DATA.fracturamiento)
     ]);
-    dataset = main;
-    programMap = new Map(main.programas.map(program => [program.id, program]));
-    maintenanceMap = new Map(main.mantenimiento_variables.map(variable => [variable.id, variable]));
+    dataset = normalizeDatasetCategories(main);
+    programMap = new Map(dataset.programas.map(program => [program.id, program]));
+    maintenanceMap = new Map(dataset.mantenimiento_variables.map(variable => [variable.id, variable]));
+    cctRecordMap = new Map(dataset.ccts.map(record => [record.cct, record]));
+    turnCatalogMap = new Map(Object.entries(turnCatalog.ccts || {}));
     markersLayer = L.layerGroup().addTo(map);
     configureBoundary(alcaldias);
     configureTerritorialLayers(subsidencias, fracturamiento);
@@ -125,6 +130,57 @@ async function fetchJson(url) {
   const response = await fetch(url, {cache:'no-store'});
   if (!response.ok) throw new Error(`Error ${response.status} al cargar ${url}`);
   return response.json();
+}
+
+const OFFICIAL_ALCALDIAS = new Map([
+  ['ALVARO OBREGON','Álvaro Obregón'], ['AZCAPOTZALCO','Azcapotzalco'],
+  ['BENITO JUAREZ','Benito Juárez'], ['COYOACAN','Coyoacán'],
+  ['CUAJIMALPA DE MORELOS','Cuajimalpa de Morelos'], ['CUAUHTEMOC','Cuauhtémoc'],
+  ['GUSTAVO A. MADERO','Gustavo A. Madero'], ['IZTACALCO','Iztacalco'],
+  ['IZTAPALAPA','Iztapalapa'], ['LA MAGDALENA CONTRERAS','La Magdalena Contreras'],
+  ['MIGUEL HIDALGO','Miguel Hidalgo'], ['MILPA ALTA','Milpa Alta'],
+  ['TLAHUAC','Tláhuac'], ['TLALPAN','Tlalpan'],
+  ['VENUSTIANO CARRANZA','Venustiano Carranza'], ['XOCHIMILCO','Xochimilco']
+]);
+
+const OFFICIAL_LEVELS = new Map([
+  ['primaria','Primaria'], ['preescolar','Preescolar'], ['secundaria','Secundaria'],
+  ['educación inicial','Educación inicial'], ['especial','Especial'], ['inicial','Inicial'],
+  ['especial - cam','Especial - CAM'], ['capep','CAPEP'], ['normal','Normal'],
+  ['preescolar - comunitario','Preescolar - comunitario'],
+  ['primaria - comunitaria','Primaria - comunitaria'],
+  ['secundaria - comunitaria','Secundaria - comunitaria'],
+  ['adultos - primaria','Adultos - primaria'], ['adultos - secundaria','Adultos - secundaria'],
+  ['baja','Baja'], ['para adultos','Para adultos'], ['capacitación','Capacitación'],
+  ['especial - otro','Especial - otro']
+]);
+
+function sentenceCase(value) {
+  const text = String(value ?? '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('es-MX');
+  return text ? text.charAt(0).toLocaleUpperCase('es-MX') + text.slice(1) : '';
+}
+
+function canonicalAlcaldia(value) {
+  return OFFICIAL_ALCALDIAS.get(clean(value)) || sentenceCase(value);
+}
+
+function canonicalLevel(value) {
+  const text = String(value ?? '').trim().replace(/\s+/g, ' ');
+  return OFFICIAL_LEVELS.get(text.toLocaleLowerCase('es-MX')) || sentenceCase(text);
+}
+
+function normalizeDatasetCategories(main) {
+  const normalizeItem = item => ({
+    ...item,
+    alcaldia: canonicalAlcaldia(item.alcaldia),
+    nivel: canonicalLevel(item.nivel),
+    niveles: unique((item.niveles || [item.nivel]).map(canonicalLevel))
+  });
+  return {
+    ...main,
+    inmuebles: main.inmuebles.map(normalizeItem),
+    ccts: main.ccts.map(normalizeItem)
+  };
 }
 
 function configureBoundary(geojson) {
@@ -379,28 +435,18 @@ function priorityColor(priority) {
 }
 
 function updateSummary(state) {
-  const onlyIlife181 = state.programas.length === 1
-    && state.programas[0] === 'ilife_180_2026'
-    && !state.alcaldia && !state.nivel && !state.prioridades.length
-    && !state.cct && !state.nombre && state.rankMin === '' && state.rankMax === ''
-    && !state.mantenimiento.length && !state.risk;
-  const byCct = new Map(dataset.ccts.map(item => [item.cct, item]));
-  const memberCcts = item => item.ccts.filter(key => {
-    const record = byCct.get(key);
-    if (state.cct && !clean(key).includes(clean(state.cct))) return false;
-    if (state.nivel && record && !record.niveles.includes(state.nivel)) return false;
-    if (state.nombre && record && !clean(record.nombre).includes(clean(state.nombre))) return false;
-    return true;
-  });
-  const currentCcts = new Set(currentItems.flatMap(memberCcts));
-  const metric = predicate => new Set(currentItems.filter(predicate).flatMap(memberCcts)).size;
-  q('kpi1').textContent = formatNumber(currentCcts.size);
-  q('kpiLabel1').textContent = 'CCT';
-  q('kpi2').textContent = formatNumber(metric(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)));
-  q('kpi3').textContent = formatNumber(metric(item => item.programas.length));
-  q('kpi4').textContent = formatNumber(metric(item => item.observacion_territorial !== 'Sin observación' && item.observacion_territorial !== 'Sin información'));
-  q('kpi5').textContent = formatNumber(metric(item => item.tuvo_apoyo_previo));
-  q('kpi6').textContent = formatNumber(metric(item => item.mantenimiento_pendientes.length));
+  const currentCctKeys = new Set(currentItems.flatMap(item => item.ccts));
+  const visibleCcts = dataset.ccts.filter(record => currentCctKeys.has(record.cct) && cctMatchesState(record, state));
+  const metricByTurn = predicate => visibleCcts
+    .filter(predicate)
+    .reduce((total, record) => total + cctTurnCount(record.cct), 0);
+  q('kpiPlanteles').textContent = formatNumber(currentItems.length);
+  q('kpiCct').textContent = formatNumber(new Set(visibleCcts.map(record => record.cct)).size);
+  q('kpi2').textContent = formatNumber(metricByTurn(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)));
+  q('kpi3').textContent = formatNumber(metricByTurn(item => item.programas.length));
+  q('kpi4').textContent = formatNumber(metricByTurn(item => item.observacion_territorial !== 'Sin observación' && item.observacion_territorial !== 'Sin información'));
+  q('kpi5').textContent = formatNumber(metricByTurn(item => item.tuvo_apoyo_previo));
+  q('kpi6').textContent = formatNumber(metricByTurn(item => item.mantenimiento_pendientes.length));
   const parts = [];
   if (state.prioridades.length) parts.push(`IPA: ${state.prioridades.map(value => value.toLowerCase()).join(', ')}`);
   if (state.programas.length) parts.push(`${state.programas.length} mejora(s)`);
@@ -408,6 +454,32 @@ function updateSummary(state) {
   if (state.risk) parts.push('observación territorial');
   if (state.rankMin || state.rankMax) parts.push(`clasificación 1,2,3: ${state.rankMin || 1}–${state.rankMax || 464}`);
   q('activeCrossSummary').textContent = parts.length ? `Cruce activo: ${parts.join(' + ')}.` : 'Sin cruces temáticos activos.';
+}
+
+function cctTurnCount(cct) {
+  const turns = turnCatalogMap.get(cct);
+  return Array.isArray(turns) && turns.length ? turns.length : 1;
+}
+
+function cctMatchesState(item, state) {
+  const priorities = new Set(state.prioridades);
+  const programs = new Set(state.programas);
+  const maintenance = new Set(state.mantenimiento);
+  const rankMin = state.rankMin === '' ? null : Number(state.rankMin);
+  const rankMax = state.rankMax === '' ? null : Number(state.rankMax);
+  if (state.alcaldia && item.alcaldia !== state.alcaldia) return false;
+  if (state.nivel && !item.niveles.includes(state.nivel)) return false;
+  if (priorities.size && !priorities.has(item.clase_prioridad_final)) return false;
+  if (state.cct && !clean(item.cct).includes(clean(state.cct))) return false;
+  if (state.nombre && !clean([item.nombre, ...(item.nombres || [])].join(' ')).includes(clean(state.nombre))) return false;
+  if (rankMin !== null && (item.prioridad_123_2026 === null || item.prioridad_123_2026 < rankMin)) return false;
+  if (rankMax !== null && (item.prioridad_123_2026 === null || item.prioridad_123_2026 > rankMax)) return false;
+  if (programs.size && !item.programas.some(program => programs.has(program))) return false;
+  if (maintenance.size && !item.mantenimiento_pendientes.some(variable => maintenance.has(variable))) return false;
+  if (state.risk === 'obs_fractura' && !item.cercano_fracturamiento_250m) return false;
+  if (state.risk === 'obs_subsidencia' && !item.subsidencia_alta) return false;
+  if (state.risk === 'obs_combinada' && !(item.cercano_fracturamiento_250m && item.subsidencia_alta)) return false;
+  return true;
 }
 
 function fitCurrentResult() {
@@ -447,62 +519,79 @@ function clearFilters() {
   render(true);
 }
 
-function showDetail(item) {
-  q('detailTitle').textContent = item.nombre;
-  const prioritySlug = clean(item.clase_prioridad_final).toLowerCase().replace(/\s+/g, '-');
-  const programCards = item.programa_registros.length
-    ? item.programa_registros.map(ref => renderProgramRecord(ref)).join('')
+function showDetail(item, selection = {}) {
+  const hostItem = item.tipo === 'inmueble'
+    ? item
+    : dataset.inmuebles.find(candidate => candidate.ccts.includes(item.cct)) || item;
+  const selectedCct = selection.cct || (hostItem.tipo === 'cct' || hostItem.ccts.length === 1 ? hostItem.cct || hostItem.ccts[0] : '');
+  const selectedCctItem = selectedCct ? cctRecordMap.get(selectedCct) : null;
+  const detailItem = selectedCctItem || hostItem;
+  const turns = selectedCct ? (turnCatalogMap.get(selectedCct) || []) : [];
+  const selectedTurn = turns.find(turn => `${turn.id}|${turn.turno}` === selection.turno) || null;
+  const effectiveTurn = selectedTurn || (turns.length === 1 ? turns[0] : null);
+  const selectedTurnLabel = effectiveTurn?.turno || (turns.length > 1 ? 'Seleccione un turno' : selectedCct ? 'Sin dato' : 'Seleccione un CCT');
+  const cctSelector = hostItem.tipo === 'inmueble' && hostItem.ccts.length > 1
+    ? `<section class="entity-selector"><span>Seleccione un CCT</span><div>${hostItem.ccts.map(key => `<button type="button" class="selector-button${selectedCct === key ? ' active' : ''}" data-cct="${escapeHtml(key)}">${escapeHtml(key)}</button>`).join('')}</div></section>`
+    : '';
+  const turnSelector = selectedCct && turns.length > 1
+    ? `<section class="entity-selector"><span>Seleccione un turno</span><div>${turns.map(turn => {
+        const key = `${turn.id}|${turn.turno}`;
+        return `<button type="button" class="selector-button${selection.turno === key ? ' active' : ''}" data-turn="${escapeHtml(key)}">${escapeHtml(turn.turno)}</button>`;
+      }).join('')}</div></section>`
+    : '';
+  q('detailTitle').textContent = effectiveTurn?.nombre || detailItem.nombre;
+  const prioritySlug = clean(detailItem.clase_prioridad_final).toLowerCase().replace(/\s+/g, '-');
+  const programCards = detailItem.programa_registros.length
+    ? detailItem.programa_registros.map(ref => renderProgramRecord(ref)).join('')
     : '<p class="muted-box">No hay registros de mejoras vinculados a esta unidad.</p>';
-  const supportDetails = renderSupportDetails(item);
-  const maintenanceCards = item.mantenimiento_disponible
-    ? (item.mantenimiento_pendientes.length
-      ? item.mantenimiento_pendientes.map(renderMaintenanceNeed).join('')
+  const supportDetails = renderSupportDetails(detailItem);
+  const maintenanceCards = detailItem.mantenimiento_disponible
+    ? (detailItem.mantenimiento_pendientes.length
+      ? detailItem.mantenimiento_pendientes.map(renderMaintenanceNeed).join('')
       : '<p class="status-box status-ok">El diagnóstico no reporta necesidades pendientes en las variables evaluadas.</p>')
     : '<p class="status-box status-missing">Este inmueble no cuenta con diagnóstico de mantenimiento en la nueva base. No se interpreta como ausencia de necesidades.</p>';
-  const sourceCards = item.registros_principales.map((record, index) =>
+  const sourceCards = detailItem.registros_principales.map((record, index) =>
     `<details class="source-details"${index === 0 ? ' open' : ''}><summary>Registro principal · fila ${formatNumber(record.source_row)}</summary>${renderFields(record.datos_principales)}</details>`
   ).join('');
   q('detailContent').innerHTML = `
     <div class="detail-tabs">
       <button class="tab-btn active" data-tab="general">General</button>
       <button class="tab-btn" data-tab="prioridad">Prioridad</button>
-      <button class="tab-btn" data-tab="mantenimiento">Mantenimiento <span class="tab-count">${item.mantenimiento_pendientes.length}</span></button>
-      <button class="tab-btn" data-tab="programas">Mejoras <span class="tab-count">${item.programa_registros.length}</span></button>
+      <button class="tab-btn" data-tab="mantenimiento">Mantenimiento <span class="tab-count">${detailItem.mantenimiento_pendientes.length}</span></button>
+      <button class="tab-btn" data-tab="programas">Mejoras <span class="tab-count">${detailItem.programa_registros.length}</span></button>
       <button class="tab-btn" data-tab="territorio">Territorio</button>
       <button class="tab-btn" data-tab="fuente">Datos fuente</button>
     </div>
     <div class="tab-pane active" data-pane="general">
-      ${item.tipo === 'inmueble' && item.ccts.length > 1 ? `<div class="cct-selector">${item.ccts.map(key => `<button type="button" data-cct="${escapeHtml(key)}">${escapeHtml(key)}</button>`).join('')}</div>` : ''}
-      <dl><dt>Unidad</dt><dd>${item.tipo === 'cct' ? 'CCT' : 'Inmueble'}</dd><dt>Código DGA</dt><dd>${escapeHtml(item.codigos_dga.join(', ') || 'Sin dato')}</dd><dt>CCT</dt><dd>${escapeHtml(item.ccts.join(', ') || 'Sin CCT')}</dd><dt>Alcaldía</dt><dd>${escapeHtml(item.alcaldia || 'Sin dato')}</dd><dt>Colonia</dt><dd>${escapeHtml(item.colonia || 'Sin dato')}</dd><dt>Domicilio</dt><dd>${escapeHtml(item.domicilio || 'Sin dato')}</dd><dt>Nivel</dt><dd>${escapeHtml(item.niveles.join(', ') || 'Sin dato')}</dd><dt>Coordenadas</dt><dd>${isMapped(item) ? `${item.lat.toFixed(6)}, ${item.lon.toFixed(6)}` : 'Sin coordenadas'}</dd></dl>
-      <div class="support-summary ${item.tuvo_apoyo_previo ? 'has-support' : ''}"><span>Apoyo previo identificado</span><strong>${item.tuvo_apoyo_previo ? 'Sí' : 'No'}</strong></div>
-      ${item.tuvo_apoyo_previo ? `<h3 class="section-subtitle">Apoyos y trabajos recibidos</h3>${supportDetails}` : ''}
+      ${cctSelector}${turnSelector}
+      <dl class="general-info-grid"><dt>Unidad</dt><dd>${selectedCct ? 'CCT' : 'Plantel'}</dd><dt>Código DGA</dt><dd>${escapeHtml(detailItem.codigos_dga.join(', ') || 'Sin dato')}</dd><dt>CCT</dt><dd>${escapeHtml(selectedCct || detailItem.ccts.join(', ') || 'Sin CCT')}</dd><dt>Turno</dt><dd>${escapeHtml(selectedTurnLabel)}</dd><dt>Alcaldía</dt><dd>${escapeHtml(effectiveTurn?.alcaldia || detailItem.alcaldia || 'Sin dato')}</dd><dt>Colonia</dt><dd>${escapeHtml(effectiveTurn?.colonia || detailItem.colonia || 'Sin dato')}</dd><dt>Domicilio</dt><dd>${escapeHtml(effectiveTurn?.domicilio || detailItem.domicilio || 'Sin dato')}</dd><dt>Nivel educativo</dt><dd>${escapeHtml(effectiveTurn?.nivel || detailItem.niveles.join(', ') || 'Sin dato')}</dd><dt>Coordenadas</dt><dd>${isMapped(detailItem) ? `${detailItem.lat.toFixed(6)}, ${detailItem.lon.toFixed(6)}` : 'Sin coordenadas'}</dd></dl>
+      <div class="support-summary ${detailItem.tuvo_apoyo_previo ? 'has-support' : ''}"><span>Apoyo previo identificado</span><strong>${detailItem.tuvo_apoyo_previo ? 'Sí' : 'No'}</strong></div>
+      ${detailItem.tuvo_apoyo_previo ? `<h3 class="section-subtitle">Apoyos y trabajos recibidos</h3>${supportDetails}` : ''}
     </div>
     <div class="tab-pane" data-pane="prioridad">
-      <div class="priority-card priority-${prioritySlug}"><span>Índice de Prioridad de Atención</span><strong>${escapeHtml(item.clase_prioridad_final)}</strong><em>${item.indice_prioridad_final === null ? 'Sin índice completo' : `${item.indice_prioridad_final.toFixed(1)} / 100`}</em></div>
-      <dl><dt>Condición de mantenimiento</dt><dd>${item.indice_mantenimiento === null ? 'Sin información' : `${item.indice_mantenimiento.toFixed(1)} / 100 · ${escapeHtml(item.clase_mantenimiento)}`}</dd><dt>Peligro territorial</dt><dd>${item.indice_peligro_territorial === null ? 'Sin información' : `${item.indice_peligro_territorial.toFixed(1)} / 100 · ${escapeHtml(item.clase_peligro_territorial)}`}</dd><dt>Calidad del índice</dt><dd>${escapeHtml(item.calidad_indice_final)}</dd><dt>Alerta</dt><dd>${escapeHtml(item.alerta_prioridad)}</dd><dt>Prioridad RM08 original</dt><dd>${escapeHtml(item.prioridad_rm08_original || 'Sin clasificación')} · índice ${item.indice_rm08_original ?? '—'}</dd><dt>1, 2, 3 2026</dt><dd>${item.prioridades_123_2026.length ? `Clasificación ${escapeHtml(item.prioridades_123_2026.join(', '))} de 464` : 'Sin clasificación'}</dd></dl>
+      <div class="priority-card priority-${prioritySlug}"><span>Índice de Prioridad de Atención</span><strong>${escapeHtml(detailItem.clase_prioridad_final)}</strong><em>${detailItem.indice_prioridad_final === null ? 'Sin índice completo' : `${detailItem.indice_prioridad_final.toFixed(1)} / 100`}</em></div>
+      <dl><dt>Condición de mantenimiento</dt><dd>${detailItem.indice_mantenimiento === null ? 'Sin información' : `${detailItem.indice_mantenimiento.toFixed(1)} / 100 · ${escapeHtml(detailItem.clase_mantenimiento)}`}</dd><dt>Peligro territorial</dt><dd>${detailItem.indice_peligro_territorial === null ? 'Sin información' : `${detailItem.indice_peligro_territorial.toFixed(1)} / 100 · ${escapeHtml(detailItem.clase_peligro_territorial)}`}</dd><dt>Calidad del índice</dt><dd>${escapeHtml(detailItem.calidad_indice_final)}</dd><dt>Alerta</dt><dd>${escapeHtml(detailItem.alerta_prioridad)}</dd><dt>Prioridad RM08 original</dt><dd>${escapeHtml(detailItem.prioridad_rm08_original || 'Sin clasificación')} · índice ${detailItem.indice_rm08_original ?? '—'}</dd><dt>1, 2, 3 2026</dt><dd>${detailItem.prioridades_123_2026.length ? `Clasificación ${escapeHtml(detailItem.prioridades_123_2026.join(', '))} de 464` : 'Sin clasificación'}</dd></dl>
       <p class="method-note">Índice final = 60% condición de mantenimiento + 40% peligro territorial. El peligro territorial combina 70% subsidencia/hundimiento y 30% cercanía a fracturas. Los faltantes no se convierten en cero.</p>
     </div>
     <div class="tab-pane" data-pane="mantenimiento">
-      <div class="maintenance-score"><span>Condición de mantenimiento</span><strong>${item.indice_mantenimiento === null ? 'Sin diagnóstico' : `${item.indice_mantenimiento.toFixed(1)} / 100`}</strong><small>${escapeHtml(item.clase_mantenimiento)} · ${escapeHtml(item.alerta_mantenimiento)}</small></div>
-      ${item.mantenimiento_transformador ? '<p class="context-note">El inmueble reporta subestación o transformador. Este dato no suma puntos, pero especializa la revisión eléctrica.</p>' : ''}
+      <div class="maintenance-score"><span>Condición de mantenimiento</span><strong>${detailItem.indice_mantenimiento === null ? 'Sin diagnóstico' : `${detailItem.indice_mantenimiento.toFixed(1)} / 100`}</strong><small>${escapeHtml(detailItem.clase_mantenimiento)} · ${escapeHtml(detailItem.alerta_mantenimiento)}</small></div>
+      ${detailItem.mantenimiento_transformador ? '<p class="context-note">El inmueble reporta subestación o transformador. Este dato no suma puntos, pero especializa la revisión eléctrica.</p>' : ''}
       <div class="maintenance-detail-list">${maintenanceCards}</div>
     </div>
     <div class="tab-pane" data-pane="programas">
-      <div class="support-summary ${item.tuvo_apoyo_previo ? 'has-support' : ''}"><span>Apoyo previo identificado</span><strong>${item.tuvo_apoyo_previo ? 'Sí' : 'No'}</strong></div>
+      <div class="support-summary ${detailItem.tuvo_apoyo_previo ? 'has-support' : ''}"><span>Apoyo previo identificado</span><strong>${detailItem.tuvo_apoyo_previo ? 'Sí' : 'No'}</strong></div>
       <h3 class="section-subtitle">Apoyos y trabajos recibidos</h3>${supportDetails}
       <h3 class="section-subtitle">Registros de mejoras</h3>${programCards}
     </div>
     <div class="tab-pane" data-pane="territorio">
-      <dl><dt>Índice territorial</dt><dd>${item.indice_peligro_territorial === null ? 'Sin información' : `${item.indice_peligro_territorial.toFixed(1)} / 100 · ${escapeHtml(item.clase_peligro_territorial)}`}</dd><dt>Calidad territorial</dt><dd>${escapeHtml(item.calidad_peligro_territorial)}</dd><dt>Resultado de observación</dt><dd>${escapeHtml(item.observacion_territorial)}</dd><dt>Fracturamiento</dt><dd>${item.cercano_fracturamiento_250m ? 'Sí, dentro de 250 m' : item.distancia_fracturamiento_m === null ? 'Sin información' : 'No, fuera de 250 m'}</dd><dt>Distancia mínima</dt><dd>${item.distancia_fracturamiento_m === null ? 'Sin información' : `${formatNumber(item.distancia_fracturamiento_m)} m · nivel ${item.nivel_fracturamiento}`}</dd><dt>Subsidencia/hundimiento</dt><dd>${escapeHtml(item.clase_subsidencia)}${item.nivel_subsidencia ? ` · nivel ${item.nivel_subsidencia}` : ''}</dd></dl>
+      <dl class="territory-info-grid"><dt>Índice territorial</dt><dd>${detailItem.indice_peligro_territorial === null ? 'Sin información' : `${detailItem.indice_peligro_territorial.toFixed(1)} / 100 · ${escapeHtml(detailItem.clase_peligro_territorial)}`}</dd><dt>Calidad territorial</dt><dd>${escapeHtml(detailItem.calidad_peligro_territorial)}</dd><dt>Resultado de observación</dt><dd>${escapeHtml(detailItem.observacion_territorial)}</dd><dt>Fracturamiento</dt><dd>${detailItem.cercano_fracturamiento_250m ? 'Sí, dentro de 250 m' : detailItem.distancia_fracturamiento_m === null ? 'Sin información' : 'No, fuera de 250 m'}</dd><dt>Distancia mínima</dt><dd>${detailItem.distancia_fracturamiento_m === null ? 'Sin información' : `${formatNumber(detailItem.distancia_fracturamiento_m)} m · nivel ${detailItem.nivel_fracturamiento}`}</dd><dt>Subsidencia/hundimiento</dt><dd>${escapeHtml(detailItem.clase_subsidencia)}${detailItem.nivel_subsidencia ? ` · nivel ${detailItem.nivel_subsidencia}` : ''}</dd></dl>
       <p class="method-note">La proximidad a fracturas y la clasificación de subsidencia son referencias territoriales para ordenar revisiones; no constituyen un dictamen estructural.</p>
     </div>
     <div class="tab-pane" data-pane="fuente">${sourceCards}</div>`;
   q('detailPanel').classList.add('open');
   q('detailContent').querySelectorAll('.tab-btn').forEach(button => button.addEventListener('click', () => activateTab(button.dataset.tab)));
-  q('detailContent').querySelectorAll('[data-cct]').forEach(button => button.addEventListener('click', () => {
-    const itemCct = dataset.ccts.find(record => record.cct === button.dataset.cct);
-    if (itemCct) showDetail(itemCct);
-  }));
+  q('detailContent').querySelectorAll('[data-cct]').forEach(button => button.addEventListener('click', () => showDetail(hostItem, {cct:button.dataset.cct})));
+  q('detailContent').querySelectorAll('[data-turn]').forEach(button => button.addEventListener('click', () => showDetail(hostItem, {cct:selectedCct, turno:button.dataset.turn})));
 }
 
 function activateTab(tab) {
