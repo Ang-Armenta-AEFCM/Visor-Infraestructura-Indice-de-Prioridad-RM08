@@ -31,6 +31,8 @@ let fractureLayer;
 let alcaldiasLayer;
 let hasFitResult = false;
 
+const EXCLUDED_LEVEL_FILTERS = new Set(['Baja', 'Capacitación', 'CAPEP', 'Especial - otro', 'Para adultos']);
+
 const map = L.map('map', {zoomControl:false, preferCanvas:true, minZoom:9}).setView([19.35, -99.13], 10);
 L.control.zoom({position:'topright'}).addTo(map);
 
@@ -62,7 +64,7 @@ async function bootstrap() {
     const [main, turnCatalog, alcaldias, subsidencias, fracturamiento] = await Promise.all([
       loadMainData(), fetchJson(DATA.turnos), fetchJson(DATA.alcaldias), fetchJson(DATA.subsidencias), fetchJson(DATA.fracturamiento)
     ]);
-    dataset = normalizeDatasetCategories(main);
+    dataset = normalizeDatasetCategories(main, turnCatalog.ccts || {});
     programMap = new Map(dataset.programas.map(program => [program.id, program]));
     maintenanceMap = new Map(dataset.mantenimiento_variables.map(variable => [variable.id, variable]));
     cctRecordMap = new Map(dataset.ccts.map(record => [record.cct, record]));
@@ -146,7 +148,7 @@ const OFFICIAL_ALCALDIAS = new Map([
 const OFFICIAL_LEVELS = new Map([
   ['primaria','Primaria'], ['preescolar','Preescolar'], ['secundaria','Secundaria'],
   ['educación inicial','Educación inicial'], ['especial','Especial'], ['inicial','Inicial'],
-  ['especial - cam','Especial - CAM'], ['capep','CAPEP'], ['normal','Normal'],
+  ['especial - cam','Especial'], ['capep','CAPEP'], ['normal','Normal'],
   ['preescolar - comunitario','Preescolar - comunitario'],
   ['primaria - comunitaria','Primaria - comunitaria'],
   ['secundaria - comunitaria','Secundaria - comunitaria'],
@@ -169,17 +171,38 @@ function canonicalLevel(value) {
   return OFFICIAL_LEVELS.get(text.toLocaleLowerCase('es-MX')) || sentenceCase(text);
 }
 
-function normalizeDatasetCategories(main) {
-  const normalizeItem = item => ({
-    ...item,
-    alcaldia: canonicalAlcaldia(item.alcaldia),
-    nivel: canonicalLevel(item.nivel),
-    niveles: unique((item.niveles || [item.nivel]).map(canonicalLevel))
+function normalizeDatasetCategories(main, turnCatalog = {}) {
+  const normalizeItem = item => {
+    let niveles = unique((item.niveles || [item.nivel]).map(canonicalLevel));
+    if (item.tipo === 'cct' && niveles.includes('Para adultos')) {
+      const adultLevels = unique((turnCatalog[item.cct] || [])
+        .map(turn => canonicalLevel(turn.nivel))
+        .filter(level => level === 'Adultos - primaria' || level === 'Adultos - secundaria'));
+      if (adultLevels.length) niveles = unique([...niveles.filter(level => level !== 'Para adultos'), ...adultLevels]);
+    }
+    return {
+      ...item,
+      alcaldia: canonicalAlcaldia(item.alcaldia),
+      nivel: niveles[0] || canonicalLevel(item.nivel),
+      niveles
+    };
+  };
+  const ccts = main.ccts.map(normalizeItem);
+  const cctByKey = new Map(ccts.map(item => [item.cct, item]));
+  const inmuebles = main.inmuebles.map(item => {
+    const normalized = normalizeItem(item);
+    if (!normalized.niveles.includes('Para adultos')) return normalized;
+    const adultLevels = unique(normalized.ccts
+      .flatMap(cct => cctByKey.get(cct)?.niveles || [])
+      .filter(level => level === 'Adultos - primaria' || level === 'Adultos - secundaria'));
+    return adultLevels.length
+      ? {...normalized, nivel:adultLevels[0], niveles:adultLevels}
+      : normalized;
   });
   return {
     ...main,
-    inmuebles: main.inmuebles.map(normalizeItem),
-    ccts: main.ccts.map(normalizeItem)
+    inmuebles,
+    ccts
   };
 }
 
@@ -208,7 +231,7 @@ function configureTerritorialLayers(subsidencias, fracturamiento) {
 function buildControls() {
   const all = [...dataset.inmuebles, ...dataset.ccts];
   fillSelect(q('filtroAlcaldia'), unique(all.flatMap(item => item.alcaldia || [])));
-  fillSelect(q('filtroNivel'), unique(all.flatMap(item => item.niveles || [item.nivel])));
+  fillSelect(q('filtroNivel'), unique(all.flatMap(item => item.niveles || [item.nivel])).filter(level => !EXCLUDED_LEVEL_FILTERS.has(level)));
   q('programFilters').innerHTML = dataset.programas.map(program =>
     `<label class="inline-check"><input type="checkbox" value="${escapeHtml(program.id)}"><span><i class="program-dot" style="--program-color:${escapeHtml(program.color)}"></i>${escapeHtml(program.label)} <small>(${formatNumber(program.count)})</small></span></label>`
   ).join('');
