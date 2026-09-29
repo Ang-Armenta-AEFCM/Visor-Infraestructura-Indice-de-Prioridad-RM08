@@ -542,7 +542,7 @@ function showDetail(item, selection = {}) {
   q('detailTitle').textContent = effectiveTurn?.nombre || detailItem.nombre;
   const prioritySlug = clean(detailItem.clase_prioridad_final).toLowerCase().replace(/\s+/g, '-');
   const programCards = detailItem.programa_registros.length
-    ? detailItem.programa_registros.map(ref => renderProgramRecord(ref)).join('')
+    ? renderProgramSummary(detailItem.programa_registros)
     : '<p class="muted-box">No hay registros de mejoras vinculados a esta unidad.</p>';
   const supportDetails = renderSupportDetails(detailItem);
   const maintenanceCards = detailItem.mantenimiento_disponible
@@ -550,9 +550,6 @@ function showDetail(item, selection = {}) {
       ? detailItem.mantenimiento_pendientes.map(renderMaintenanceNeed).join('')
       : '<p class="status-box status-ok">El diagnóstico no reporta necesidades pendientes en las variables evaluadas.</p>')
     : '<p class="status-box status-missing">Este inmueble no cuenta con diagnóstico de mantenimiento en la nueva base. No se interpreta como ausencia de necesidades.</p>';
-  const sourceCards = detailItem.registros_principales.map((record, index) =>
-    `<details class="source-details"${index === 0 ? ' open' : ''}><summary>Registro principal · fila ${formatNumber(record.source_row)}</summary>${renderFields(record.datos_principales)}</details>`
-  ).join('');
   q('detailContent').innerHTML = `
     <div class="detail-tabs">
       <button class="tab-btn active" data-tab="general">General</button>
@@ -560,7 +557,6 @@ function showDetail(item, selection = {}) {
       <button class="tab-btn" data-tab="mantenimiento">Mantenimiento <span class="tab-count">${detailItem.mantenimiento_pendientes.length}</span></button>
       <button class="tab-btn" data-tab="programas">Mejoras <span class="tab-count">${detailItem.programa_registros.length}</span></button>
       <button class="tab-btn" data-tab="territorio">Territorio</button>
-      <button class="tab-btn" data-tab="fuente">Datos fuente</button>
     </div>
     <div class="tab-pane active" data-pane="general">
       ${cctSelector}${turnSelector}
@@ -586,8 +582,7 @@ function showDetail(item, selection = {}) {
     <div class="tab-pane" data-pane="territorio">
       <dl class="territory-info-grid"><dt>Índice territorial</dt><dd>${detailItem.indice_peligro_territorial === null ? 'Sin información' : `${detailItem.indice_peligro_territorial.toFixed(1)} / 100 · ${escapeHtml(detailItem.clase_peligro_territorial)}`}</dd><dt>Calidad territorial</dt><dd>${escapeHtml(detailItem.calidad_peligro_territorial)}</dd><dt>Resultado de observación</dt><dd>${escapeHtml(detailItem.observacion_territorial)}</dd><dt>Fracturamiento</dt><dd>${detailItem.cercano_fracturamiento_250m ? 'Sí, dentro de 250 m' : detailItem.distancia_fracturamiento_m === null ? 'Sin información' : 'No, fuera de 250 m'}</dd><dt>Distancia mínima</dt><dd>${detailItem.distancia_fracturamiento_m === null ? 'Sin información' : `${formatNumber(detailItem.distancia_fracturamiento_m)} m · nivel ${detailItem.nivel_fracturamiento}`}</dd><dt>Subsidencia/hundimiento</dt><dd>${escapeHtml(detailItem.clase_subsidencia)}${detailItem.nivel_subsidencia ? ` · nivel ${detailItem.nivel_subsidencia}` : ''}</dd></dl>
       <p class="method-note">La proximidad a fracturas y la clasificación de subsidencia son referencias territoriales para ordenar revisiones; no constituyen un dictamen estructural.</p>
-    </div>
-    <div class="tab-pane" data-pane="fuente">${sourceCards}</div>`;
+    </div>`;
   q('detailPanel').classList.add('open');
   q('detailContent').querySelectorAll('.tab-btn').forEach(button => button.addEventListener('click', () => activateTab(button.dataset.tab)));
   q('detailContent').querySelectorAll('[data-cct]').forEach(button => button.addEventListener('click', () => showDetail(hostItem, {cct:button.dataset.cct})));
@@ -599,13 +594,24 @@ function activateTab(tab) {
   q('detailContent').querySelectorAll('.tab-pane').forEach(pane => pane.classList.toggle('active', pane.dataset.pane === tab));
 }
 
-function renderProgramRecord(ref) {
-  const meta = programMap.get(ref.programa);
-  return `<details class="program-record" style="--program-color:${escapeHtml(meta?.color || '#174a72')}"><summary>${escapeHtml(meta?.label || ref.programa)} · fila ${formatNumber(ref.registro.source_row)}</summary>${renderFields(ref.registro.campos)}</details>`;
-}
-
-function renderFields(fields) {
-  return `<div class="records-scroll"><table class="field-table"><tbody>${fields.map(field => `<tr><th>${escapeHtml(field.campo)}</th><td>${escapeHtml(field.valor)}</td></tr>`).join('')}</tbody></table></div>`;
+function renderProgramSummary(refs) {
+  const entries = refs.map(ref => {
+    const meta = programMap.get(ref.programa);
+    const label = meta?.label || ref.programa;
+    const positionField = ref.programa === 'faltantes_464'
+      ? (ref.registro?.campos || []).find(field => clean(field.campo) === clean('1, 2, 3 2026 PRIORIDAD 464'))
+      : null;
+    const position = positionField && positionField.valor !== '' && positionField.valor !== null
+      ? Number(positionField.valor)
+      : Number.NaN;
+    return {
+      key: `${ref.programa}|${Number.isFinite(position) ? position : ''}`,
+      label: Number.isFinite(position) ? `${label} · ${formatNumber(position)} de 464` : label,
+      color: meta?.color || '#174a72'
+    };
+  });
+  const uniqueEntries = [...new Map(entries.map(entry => [entry.key, entry])).values()];
+  return `<ul class="improvement-list">${uniqueEntries.map(entry => `<li><i class="program-dot" style="--program-color:${escapeHtml(entry.color)}"></i><strong>${escapeHtml(entry.label)}</strong></li>`).join('')}</ul>`;
 }
 
 function renderMaintenanceNeed(variableId) {
