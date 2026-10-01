@@ -64,7 +64,7 @@ async function bootstrap() {
     const [main, turnCatalog, alcaldias, subsidencias, fracturamiento] = await Promise.all([
       loadMainData(), fetchJson(DATA.turnos), fetchJson(DATA.alcaldias), fetchJson(DATA.subsidencias), fetchJson(DATA.fracturamiento)
     ]);
-    dataset = normalizeDatasetCategories(main, turnCatalog.ccts || {});
+    dataset = CctMaster.merge(main, turnCatalog);
     programMap = new Map(dataset.programas.map(program => [program.id, program]));
     maintenanceMap = new Map(dataset.mantenimiento_variables.map(variable => [variable.id, variable]));
     cctRecordMap = new Map(dataset.ccts.map(record => [record.cct, record]));
@@ -147,7 +147,7 @@ const OFFICIAL_ALCALDIAS = new Map([
 
 const OFFICIAL_LEVELS = new Map([
   ['primaria','Primaria'], ['preescolar','Preescolar'], ['secundaria','Secundaria'],
-  ['educación inicial','Educación inicial'], ['especial','Especial'], ['inicial','Inicial'],
+  ['educación inicial','Educación inicial'], ['especial','Especial'], ['inicial','Educación inicial'],
   ['especial - cam','Especial'], ['capep','CAPEP'], ['normal','Normal'],
   ['preescolar - comunitario','Preescolar - comunitario'],
   ['primaria - comunitaria','Primaria - comunitaria'],

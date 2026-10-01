@@ -15,7 +15,11 @@ init();
 
 async function init() {
   try {
-    dataset = await loadMainData();
+    const [main, turnCatalog] = await Promise.all([
+      loadMainData(),
+      fetchJson('data/catalogo_cct_turnos.json')
+    ]);
+    dataset = CctMaster.merge(main, turnCatalog);
     programMap = new Map(dataset.programas.map(program => [program.id, program]));
     maintenanceMap = new Map(dataset.mantenimiento_variables.map(variable => [variable.id, variable]));
     buildFilters();
@@ -56,7 +60,7 @@ function fillSelect(select, values) {
 function buildFilters() {
   const all = [...dataset.inmuebles, ...dataset.ccts];
   fillSelect(q('stAlcaldia'), unique(all.map(item => item.alcaldia)));
-  fillSelect(q('stNivel'), unique(all.flatMap(item => item.niveles)));
+  fillSelect(q('stNivel'), unique(all.flatMap(item => item.niveles)).filter(level => !CctMaster.excludedLevels.has(level)));
   q('stPrograms').innerHTML = dataset.programas.map(program =>
     `<label><input type="checkbox" value="${escapeHtml(program.id)}"><span><i class="program-dot" style="--program-color:${escapeHtml(program.color)}"></i>${escapeHtml(program.label)}</span></label>`
   ).join('');
