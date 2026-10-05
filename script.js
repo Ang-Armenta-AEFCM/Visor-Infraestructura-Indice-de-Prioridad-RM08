@@ -3,6 +3,7 @@
 const DATA = {
   main: 'data/rm08_infraestructura.json',
   turnos: 'data/catalogo_cct_turnos.json',
+  conteoInmuebles: 'data/inmuebles_conteo.json?v=20261005-inmuebles-2769',
   supports: 'data/apoyos_detallados.json',
   alcaldias: 'data/alcaldias.json',
   subsidencias: 'data/subsidencias.json',
@@ -61,10 +62,11 @@ bootstrap();
 
 async function bootstrap() {
   try {
-    const [main, turnCatalog, alcaldias, subsidencias, fracturamiento] = await Promise.all([
-      loadMainData(), fetchJson(DATA.turnos), fetchJson(DATA.alcaldias), fetchJson(DATA.subsidencias), fetchJson(DATA.fracturamiento)
+    const [main, turnCatalog, alcaldias, subsidencias, fracturamiento, conteoInmuebles] = await Promise.all([
+      loadMainData(), fetchJson(DATA.turnos), fetchJson(DATA.alcaldias), fetchJson(DATA.subsidencias), fetchJson(DATA.fracturamiento), fetchJson(DATA.conteoInmuebles)
     ]);
     dataset = CctMaster.merge(main, turnCatalog);
+    dataset.inmuebles_conteo = conteoInmuebles;
     programMap = new Map(dataset.programas.map(program => [program.id, program]));
     maintenanceMap = new Map(dataset.mantenimiento_variables.map(variable => [variable.id, variable]));
     cctRecordMap = new Map(dataset.ccts.map(record => [record.cct, record]));
@@ -457,13 +459,18 @@ function priorityColor(priority) {
   return ({'Muy alta':'#991b1b', 'Alta':'#dc2626', 'Media':'#f59e0b', 'Baja':'#65a30d', 'Muy baja':'#16a34a'})[priority] || '#64748b';
 }
 
+function countOriginalInmueblesForCcts(ccts) {
+  const keys = new Set(ccts);
+  return dataset.inmuebles_conteo.filter(item => item.ccts.some(cct => keys.has(cct))).length;
+}
+
 function updateSummary(state) {
   const currentCctKeys = new Set(currentItems.flatMap(item => item.ccts));
   const visibleCcts = dataset.ccts.filter(record => currentCctKeys.has(record.cct) && cctMatchesState(record, state));
   const metricByTurn = predicate => visibleCcts
     .filter(predicate)
     .reduce((total, record) => total + cctTurnCount(record.cct), 0);
-  q('kpiPlanteles').textContent = formatNumber(currentItems.length);
+  q('kpiPlanteles').textContent = formatNumber(countOriginalInmueblesForCcts(visibleCcts.map(record => record.cct)));
   q('kpiCct').textContent = formatNumber(new Set(visibleCcts.map(record => record.cct)).size);
   q('kpi2').textContent = formatNumber(metricByTurn(item => ['Alta','Muy alta'].includes(item.clase_prioridad_final)));
   q('kpi3').textContent = formatNumber(metricByTurn(item => item.programas.length));
