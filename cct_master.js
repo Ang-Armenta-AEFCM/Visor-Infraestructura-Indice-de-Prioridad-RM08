@@ -165,13 +165,33 @@
   function merge(main, catalog = {}) {
     const turnCatalog = catalog.ccts || {};
     const records = catalog.registros || {};
-    const originalKeys = new Set(main.ccts.map(item => item.cct));
-    const ccts = main.ccts.map(item => overlayCct(item, records[item.cct], turnCatalog));
+    const retainedKeys = new Set(catalog.cct_conservados || []);
+    const allowedKeys = new Set([...Object.keys(records), ...retainedKeys]);
+    const originalItems = main.ccts.filter(item => allowedKeys.has(item.cct));
+    const originalKeys = new Set(originalItems.map(item => item.cct));
+    const ccts = originalItems.map(item => overlayCct(item, records[item.cct], turnCatalog));
     const addedKeys = Object.keys(records).filter(cct => !originalKeys.has(cct));
     addedKeys.forEach(cct => ccts.push(createCct(records[cct], turnCatalog)));
     const cctByKey = new Map(ccts.map(item => [item.cct, item]));
 
-    const inmuebles = main.inmuebles.map(item => updateInmueble(item, cctByKey, records, turnCatalog));
+    const inmuebles = main.inmuebles
+      .map(item => ({...item, ccts:(item.ccts || []).filter(cct => allowedKeys.has(cct))}))
+      .filter(item => item.ccts.length)
+      .map(item => {
+        const updated = updateInmueble({...item, cct:item.ccts[0]}, cctByKey, records, turnCatalog);
+        const members = item.ccts.map(cct => cctByKey.get(cct)).filter(Boolean);
+        const names = unique(members.map(member => member.nombre));
+        const itemLevels = unique(members.flatMap(member => member.niveles || []));
+        return {
+          ...updated,
+          cct:item.ccts[0],
+          ccts:item.ccts,
+          nombre:names[0] || updated.nombre,
+          nombres:names.length ? names : updated.nombres,
+          nivel:itemLevels[0] || updated.nivel,
+          niveles:itemLevels.length ? itemLevels : updated.niveles
+        };
+      });
     const newGroups = new Map();
     addedKeys.forEach(cct => {
       const record = records[cct];
