@@ -4,6 +4,7 @@ const DATA = {
   main: 'data/rm08_infraestructura.json',
   turnos: 'data/catalogo_cct_turnos.json',
   conteoInmuebles: 'data/inmuebles_conteo.json?v=20261005-inmuebles-2769',
+  detalleObra: 'data/detalle_obra_2025.json?v=20261005-actas-2025',
   supports: 'data/apoyos_detallados.json',
   alcaldias: 'data/alcaldias.json',
   subsidencias: 'data/subsidencias.json',
@@ -21,6 +22,7 @@ const formatNumber = value => Number(value || 0).toLocaleString('es-MX');
 const isMapped = item => Number.isFinite(item.lat) && Number.isFinite(item.lon);
 
 let dataset;
+let detalleObraPorCct = {};
 let programMap = new Map();
 let maintenanceMap = new Map();
 let cctRecordMap = new Map();
@@ -37,36 +39,34 @@ const EXCLUDED_LEVEL_FILTERS = new Set(['Baja', 'Capacitación', 'CAPEP', 'Espec
 const map = L.map('map', {zoomControl:false, preferCanvas:true, minZoom:9}).setView([19.35, -99.13], 10);
 L.control.zoom({position:'topright'}).addTo(map);
 
+const lightBasemapPane = map.createPane('infraBasemapLight');
+lightBasemapPane.style.zIndex = '200';
+const darkBasemapPane = map.createPane('infraBasemapDark');
+darkBasemapPane.style.zIndex = '200';
+darkBasemapPane.style.filter = 'brightness(.62) contrast(1.3) saturate(.55) hue-rotate(180deg) invert(1)';
+const esriBasemapUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+const esriAttribution = 'Tiles &copy; Esri &mdash; Source: Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), NOSTRA, &copy; OpenStreetMap contributors, and the GIS User Community';
 const baseLayers = {
-  'OpenStreetMap': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 20,
-    attribution: 'Tiles © Esri'
+  'Claro': L.tileLayer(esriBasemapUrl, {
+    maxZoom: 20, attribution: esriAttribution, pane: 'infraBasemapLight'
   }),
-  'Mapa claro': L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 20,
-    attribution: '© OpenStreetMap © CARTO'
-  }),
-  'Satélite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 20,
-    attribution: 'Tiles © Esri'
-  }),
-  'Mapa oscuro': L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 20,
-    attribution: '© OpenStreetMap © CARTO'
+  'Oscuro': L.tileLayer(esriBasemapUrl, {
+    maxZoom: 20, attribution: esriAttribution, pane: 'infraBasemapDark'
   })
 };
-baseLayers.OpenStreetMap.addTo(map);
+baseLayers.Claro.addTo(map);
 L.control.layers(baseLayers, {}, {collapsed:true, position:'bottomright'}).addTo(map);
 
 bootstrap();
 
 async function bootstrap() {
   try {
-    const [main, turnCatalog, alcaldias, subsidencias, fracturamiento, conteoInmuebles] = await Promise.all([
-      loadMainData(), fetchJson(DATA.turnos), fetchJson(DATA.alcaldias), fetchJson(DATA.subsidencias), fetchJson(DATA.fracturamiento), fetchJson(DATA.conteoInmuebles)
+    const [main, turnCatalog, alcaldias, subsidencias, fracturamiento, conteoInmuebles, detalleObra] = await Promise.all([
+      loadMainData(), fetchJson(DATA.turnos), fetchJson(DATA.alcaldias), fetchJson(DATA.subsidencias), fetchJson(DATA.fracturamiento), fetchJson(DATA.conteoInmuebles), fetchJson(DATA.detalleObra)
     ]);
     dataset = CctMaster.merge(main, turnCatalog);
     dataset.inmuebles_conteo = conteoInmuebles;
+    detalleObraPorCct = detalleObra;
     programMap = new Map(dataset.programas.map(program => [program.id, program]));
     maintenanceMap = new Map(dataset.mantenimiento_variables.map(variable => [variable.id, variable]));
     cctRecordMap = new Map(dataset.ccts.map(record => [record.cct, record]));
@@ -575,6 +575,7 @@ function showDetail(item, selection = {}) {
     ? renderProgramSummary(detailItem.programa_registros)
     : '<p class="muted-box">No hay registros de mejoras vinculados a esta unidad.</p>';
   const supportDetails = renderSupportDetails(detailItem);
+  const obraRows = getDetalleObraRows(selectedCct ? [selectedCct] : hostItem.ccts);
   const maintenanceCards = detailItem.mantenimiento_disponible
     ? (detailItem.mantenimiento_pendientes.length
       ? detailItem.mantenimiento_pendientes.map(renderMaintenanceNeed).join('')
@@ -586,6 +587,7 @@ function showDetail(item, selection = {}) {
       <button class="tab-btn" data-tab="prioridad">Prioridad</button>
       <button class="tab-btn" data-tab="mantenimiento">Mantenimiento <span class="tab-count">${detailItem.mantenimiento_pendientes.length}</span></button>
       <button class="tab-btn" data-tab="programas">Mejoras <span class="tab-count">${detailItem.programa_registros.length}</span></button>
+      ${obraRows.length ? '<button class="tab-btn" data-tab="detalle-obra">Detalle de obra</button>' : ''}
       <button class="tab-btn" data-tab="territorio">Territorio</button>
     </div>
     <div class="tab-pane active" data-pane="general">
@@ -609,6 +611,7 @@ function showDetail(item, selection = {}) {
       <h3 class="section-subtitle">Apoyos y trabajos recibidos</h3>${supportDetails}
       <h3 class="section-subtitle">Registros de mejoras</h3>${programCards}
     </div>
+    ${obraRows.length ? `<div class="tab-pane" data-pane="detalle-obra">${renderDetalleObra(obraRows)}</div>` : ''}
     <div class="tab-pane" data-pane="territorio">
       <dl class="territory-info-grid"><dt>Índice territorial</dt><dd>${detailItem.indice_peligro_territorial === null ? 'Sin información' : `${detailItem.indice_peligro_territorial.toFixed(1)} / 100 · ${escapeHtml(detailItem.clase_peligro_territorial)}`}</dd><dt>Calidad territorial</dt><dd>${escapeHtml(detailItem.calidad_peligro_territorial)}</dd><dt>Resultado de observación</dt><dd>${escapeHtml(detailItem.observacion_territorial)}</dd><dt>Fracturamiento</dt><dd>${detailItem.cercano_fracturamiento_250m ? 'Sí, dentro de 250 m' : detailItem.distancia_fracturamiento_m === null ? 'Sin información' : 'No, fuera de 250 m'}</dd><dt>Distancia mínima</dt><dd>${detailItem.distancia_fracturamiento_m === null ? 'Sin información' : `${formatNumber(detailItem.distancia_fracturamiento_m)} m · nivel ${detailItem.nivel_fracturamiento}`}</dd><dt>Subsidencia/hundimiento</dt><dd>${escapeHtml(detailItem.clase_subsidencia)}${detailItem.nivel_subsidencia ? ` · nivel ${detailItem.nivel_subsidencia}` : ''}</dd></dl>
       <p class="method-note">La proximidad a fracturas y la clasificación de subsidencia son referencias territoriales para ordenar revisiones; no constituyen un dictamen estructural.</p>
@@ -617,6 +620,15 @@ function showDetail(item, selection = {}) {
   q('detailContent').querySelectorAll('.tab-btn').forEach(button => button.addEventListener('click', () => activateTab(button.dataset.tab)));
   q('detailContent').querySelectorAll('[data-cct]').forEach(button => button.addEventListener('click', () => showDetail(hostItem, {cct:button.dataset.cct})));
   q('detailContent').querySelectorAll('[data-turn]').forEach(button => button.addEventListener('click', () => showDetail(hostItem, {cct:selectedCct, turno:button.dataset.turn})));
+}
+
+function getDetalleObraRows(ccts) {
+  const rows = (ccts || []).flatMap(cct => detalleObraPorCct[cct] || []);
+  return [...new Map(rows.map(row => [JSON.stringify([row.contrato, row.descripcion]), row])).values()];
+}
+
+function renderDetalleObra(rows) {
+  return `<table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;line-height:1.5"><thead><tr><th style="width:34%;padding:9px;text-align:left;vertical-align:top;border-bottom:1px solid #cbd5e1;overflow-wrap:anywhere">No. de contrato</th><th style="padding:9px;text-align:left;vertical-align:top;border-bottom:1px solid #cbd5e1;overflow-wrap:anywhere">Descripción de los trabajos en acta entrega-recepción</th></tr></thead><tbody>${rows.map(row => `<tr><td style="padding:9px;vertical-align:top;border-bottom:1px solid #e2e8f0;overflow-wrap:anywhere;white-space:pre-wrap">${escapeHtml(row.contrato)}</td><td style="padding:9px;vertical-align:top;border-bottom:1px solid #e2e8f0;overflow-wrap:anywhere;white-space:pre-wrap">${escapeHtml(row.descripcion)}</td></tr>`).join('')}</tbody></table>`;
 }
 
 function activateTab(tab) {
