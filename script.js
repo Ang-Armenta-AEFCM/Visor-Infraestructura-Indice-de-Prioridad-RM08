@@ -629,10 +629,25 @@ function getDetalleObraRows(ccts) {
 }
 
 function splitDetalleObraConceptos(descripcion) {
-  return String(descripcion || '')
-    .split(';')
-    .map(concepto => concepto.trim().replace(/\s+/g, ' '))
-    .filter(Boolean);
+  const concepts = [];
+  let current = '';
+  let parenthesisDepth = 0;
+  const addConcept = () => {
+    const concept = current.trim().replace(/\s+/g, ' ').replace(/[.;,]+$/, '');
+    if (concept) concepts.push(concept);
+    current = '';
+  };
+  for (const character of String(descripcion || '')) {
+    if (character === '(') parenthesisDepth += 1;
+    if (character === ')' && parenthesisDepth > 0) parenthesisDepth -= 1;
+    if ((character === ';' || character === ',' || character === '\n') && parenthesisDepth === 0) {
+      addConcept();
+    } else {
+      current += character;
+    }
+  }
+  addConcept();
+  return concepts;
 }
 
 function renderDetalleObraGeneral(rows, item) {
