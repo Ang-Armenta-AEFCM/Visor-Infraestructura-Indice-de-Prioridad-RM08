@@ -610,7 +610,6 @@ function showDetail(item, selection = {}) {
     </div>
     <div class="tab-pane" data-pane="programas">
       <div class="support-summary ${detailItem.tuvo_apoyo_previo ? 'has-support' : ''}"><span>Apoyo previo identificado</span><strong>${detailItem.tuvo_apoyo_previo ? 'Sí' : 'No'}</strong></div>
-      <h3 class="section-subtitle">Apoyos y trabajos recibidos</h3>${supportDetails}
       <h3 class="section-subtitle">Registros de mejoras</h3>${programCards}
     </div>
     <div class="tab-pane" data-pane="territorio">
